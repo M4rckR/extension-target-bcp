@@ -1,0 +1,601 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* ── Tokens de color BCP ─────────────────────────────── */
+      :root {
+        --bcp-primary-700: #002a8d;
+        --bcp-primary-500: #0030b3;
+        --bcp-primary-400: #0a47f0;
+        --bcp-primary-100: #b2d6ff;
+        --bcp-primary-040: #ebf4ff;
+        --bcp-secondary-500: #ff7800;
+        --bcp-analogous-300: #1f95de;
+        --bcp-surface: #f2f4f8;
+        --bcp-on-text: #202e44;
+        --bcp-onsurface-900: #4d5b70;
+        --bcp-onsurface-400: #acb2bd;
+        --bcp-onsurface-100: #e5e7eb;
+        --bcp-onsurface-040: #f6f6f7;
+        --vec-color: #c0392b;
+        --vec-bg: #fdecea;
+        --mbox-color: #1a7a52;
+        --mbox-bg: #eaf6f0;
+      }
+
+      /* ── Reset ───────────────────────────────────────────── */
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: "IBM Plex Sans", sans-serif;
+        width: 480px;
+        background: #fff;
+        color: var(--bcp-on-text);
+        font-size: 13px;
+      }
+
+      /* ── Header ──────────────────────────────────────────── */
+      .header {
+        background: var(--bcp-primary-700);
+        padding: 13px 16px 0;
+        position: relative;
+      }
+      .header__top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 10px;
+      }
+      .header__left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .header__logo {
+        width: 30px;
+        height: 30px;
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 7px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .header__logo img {
+        width: 20px;
+        height: 20px;
+      }
+      .header__title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #fff;
+      }
+      .header__subtitle {
+        font-size: 10px;
+        color: var(--bcp-primary-100);
+        font-family: "IBM Plex Mono", monospace;
+        margin-top: 1px;
+      }
+      .header__right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .header__count {
+        background: var(--bcp-secondary-500);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 600;
+        padding: 3px 9px;
+        border-radius: 20px;
+        font-family: "IBM Plex Mono", monospace;
+        letter-spacing: 0.06em;
+      }
+
+      /* Botón utilitario — no pertenece a un bloque específico */
+      .btn-clear {
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: #fff;
+        font-size: 10px;
+        padding: 3px 9px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-family: "IBM Plex Mono", monospace;
+        transition: all 0.15s;
+      }
+      .btn-clear:hover {
+        background: rgba(255, 255, 255, 0.22);
+      }
+
+      /* ── Tabs ────────────────────────────────────────────── */
+      .tabs {
+        display: flex;
+      }
+      .tabs__item {
+        padding: 9px 20px;
+        font-size: 11px;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.4);
+        cursor: pointer;
+        border-bottom: 3px solid transparent;
+        transition: all 0.15s;
+        user-select: none;
+        letter-spacing: 0.02em;
+      }
+      .tabs__item--active {
+        color: #fff;
+        border-bottom-color: var(--bcp-secondary-500);
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .tabs__item:hover:not(.tabs__item--active) {
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      /* ── URL bar ─────────────────────────────────────────── */
+      .url-bar {
+        background: var(--bcp-primary-040);
+        border-bottom: 1px solid var(--bcp-onsurface-100);
+        padding: 6px 16px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .url-bar__indicator {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--mbox-color);
+        flex-shrink: 0;
+        animation: pulse 2.5s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+      .url-bar__text {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 10px;
+        color: var(--bcp-onsurface-900);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* ── Panels ──────────────────────────────────────────── */
+      .panel {
+        display: none;
+      }
+      .panel--active {
+        display: block;
+      }
+
+      /* ── Stats (pestaña mBoxes) ──────────────────────────── */
+      .stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+      .stats__item {
+        padding: 14px 16px 12px;
+        text-align: center;
+        border-right: 1px solid var(--bcp-onsurface-100);
+        border-bottom: 1px solid var(--bcp-onsurface-100);
+        position: relative;
+      }
+      .stats__item:last-child {
+        border-right: none;
+      }
+
+      /* Barra de color superior de cada stat */
+      .stats__item::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+      }
+      .stats__item--active::before {
+        background: var(--bcp-secondary-500);
+      }
+      .stats__item--free::before {
+        background: #1a7a52;
+      }
+      .stats__item--total::before {
+        background: var(--bcp-primary-400);
+      }
+
+      .stats__number {
+        font-size: 28px;
+        font-weight: 700;
+        font-family: "IBM Plex Mono", monospace;
+        line-height: 1;
+      }
+      .stats__label {
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--bcp-onsurface-400);
+        margin-top: 5px;
+        font-family: "IBM Plex Mono", monospace;
+      }
+
+      /* Color del número según tipo de stat */
+      .stats__item--active .stats__number {
+        color: var(--bcp-secondary-500);
+      }
+      .stats__item--free .stats__number {
+        color: #1a7a52;
+      }
+      .stats__item--total .stats__number {
+        color: var(--bcp-primary-500);
+      }
+
+      /* ── Lista scrollable ────────────────────────────────── */
+      .list {
+        max-height: 340px;
+        overflow-y: auto;
+      }
+      .list::-webkit-scrollbar {
+        width: 3px;
+      }
+      .list::-webkit-scrollbar-thumb {
+        background: var(--bcp-onsurface-100);
+        border-radius: 2px;
+      }
+
+      /* ── Fila de actividad ───────────────────────────────── */
+      .activity {
+        padding: 10px 16px 11px;
+        border-bottom: 1px solid var(--bcp-onsurface-100);
+        transition: background 0.1s;
+      }
+      .activity:nth-child(even) {
+        background: var(--bcp-onsurface-040);
+      }
+      .activity:nth-child(odd) {
+        background: #fff;
+      }
+      .activity:hover {
+        background: var(--bcp-primary-040);
+      }
+      .activity:last-child {
+        border-bottom: none;
+      }
+
+      /* ── Etiqueta de scope (VEC / mbox) ─────────────────── */
+      .scope-tag {
+        display: inline-block;
+        margin-bottom: 4px;
+        font-size: 8px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-family: "IBM Plex Mono", monospace;
+        white-space: nowrap;
+      }
+      .scope-tag--vec {
+        background: var(--vec-bg);
+        color: var(--vec-color);
+        border: 1px solid rgba(192, 57, 43, 0.15);
+      }
+      .scope-tag--mbox {
+        background: var(--mbox-bg);
+        color: var(--mbox-color);
+        border: 1px solid rgba(26, 122, 82, 0.15);
+      }
+
+      /* ── Detalle de la actividad ─────────────────────────── */
+      .activity__name {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--bcp-on-text);
+        line-height: 1.4;
+      }
+      .activity__meta {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 3px;
+        flex-wrap: wrap;
+      }
+      .activity__id {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9px;
+        color: var(--bcp-onsurface-400);
+      }
+      .activity__experience {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9px;
+        color: var(--bcp-analogous-300);
+        font-weight: 500;
+      }
+      .activity__separator {
+        color: var(--bcp-onsurface-400);
+        font-size: 9px;
+      }
+      .activity__type {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9px;
+        font-weight: 700;
+      }
+      .activity__type--ab {
+        color: #7c3aed;
+      }
+      .activity__type--xt {
+        color: var(--bcp-secondary-500);
+      }
+
+      /* Link clickable que abre la actividad en Adobe Target */
+      .activity__link {
+        display: block;
+        text-decoration: none;
+        color: inherit;
+      }
+      .activity__link:hover .activity__name {
+        color: var(--bcp-primary-500);
+        text-decoration: underline;
+      }
+      .activity__link:hover .activity__open-hint {
+        opacity: 1;
+      }
+      .activity__link--plain {
+        display: block;
+      }
+      .activity__open-hint {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9px;
+        color: var(--bcp-primary-400);
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+
+      /* Botones de adivinanza cuando el tipo AB/XT es desconocido */
+      .activity__guesses {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .guess-btn {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        padding: 2px 8px;
+        border-radius: 3px;
+        text-decoration: none;
+        transition: opacity 0.15s;
+      }
+      .guess-btn:hover {
+        opacity: 0.75;
+      }
+      .guess-btn--ab {
+        background: #ede9fe;
+        color: #7c3aed;
+        border: 1px solid rgba(124, 58, 237, 0.2);
+      }
+      .guess-btn--xt {
+        background: #fff3e0;
+        color: var(--bcp-secondary-500);
+        border: 1px solid rgba(255, 120, 0, 0.2);
+      }
+
+      /* ── Fila de mbox ────────────────────────────────────── */
+      .mbox-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--bcp-onsurface-100);
+        transition: background 0.1s;
+        gap: 12px;
+      }
+      .mbox-row:nth-child(even) {
+        background: var(--bcp-onsurface-040);
+      }
+      .mbox-row:nth-child(odd) {
+        background: #fff;
+      }
+      .mbox-row:hover {
+        background: var(--bcp-primary-040);
+      }
+      .mbox-row:last-child {
+        border-bottom: none;
+      }
+
+      .mbox-row__info {
+        flex: 1;
+        min-width: 0;
+      }
+      .mbox-row__name {
+        font-size: 11px;
+        font-weight: 600;
+        font-family: "IBM Plex Mono", monospace;
+        color: var(--bcp-on-text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .mbox-row__activity {
+        font-size: 10px;
+        color: var(--bcp-onsurface-900);
+        margin-top: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .mbox-row__status {
+        flex-shrink: 0;
+      }
+
+      /* ── Badge de estado del mbox ────────────────────────── */
+      .status-badge {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 3px 8px;
+        border-radius: 20px;
+        white-space: nowrap;
+      }
+      .status-badge--active {
+        background: #fff3e0;
+        color: var(--bcp-secondary-500);
+        border: 1px solid rgba(255, 120, 0, 0.25);
+      }
+      .status-badge--free {
+        background: #eaf6f0;
+        color: #1a7a52;
+        border: 1px solid rgba(26, 122, 82, 0.25);
+      }
+      .status-badge--alloy {
+        background: #fff3e0;
+        color: var(--bcp-secondary-500);
+        border: 1px solid rgba(255, 120, 0, 0.25);
+      }
+
+      /* ── Estado vacío ────────────────────────────────────── */
+      .empty-state {
+        padding: 44px 0;
+        text-align: center;
+      }
+      .empty-state__icon {
+        font-size: 30px;
+        display: block;
+        margin-bottom: 10px;
+      }
+      .empty-state__text {
+        font-size: 12px;
+        line-height: 1.7;
+        color: var(--bcp-onsurface-900);
+      }
+
+      /* Botón para reinyectar inject.js/content.js en pestañas que ya
+         estaban abiertas antes de recargar la extensión (evita el reload manual) */
+      .btn-inject {
+        margin-top: 14px;
+        background: var(--bcp-primary-500);
+        color: #fff;
+        border: none;
+        font-size: 11px;
+        font-weight: 600;
+        font-family: "IBM Plex Mono", monospace;
+        letter-spacing: 0.04em;
+        padding: 7px 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .btn-inject:hover {
+        background: var(--bcp-primary-400);
+      }
+
+      /* ── Footer ──────────────────────────────────────────── */
+      .footer {
+        background: var(--bcp-surface);
+        border-top: 1px solid var(--bcp-onsurface-100);
+        padding: 6px 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .footer__note {
+        font-size: 9px;
+        color: var(--bcp-onsurface-400);
+        font-family: "IBM Plex Mono", monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="header__top">
+        <div class="header__left">
+          <div class="header__logo">
+            <img src="assets/icon48.svg" alt="BCP" />
+          </div>
+          <div>
+            <div class="header__title">mBox Inspector</div>
+            <div class="header__subtitle">Adobe Target · Alloy Monitor</div>
+          </div>
+        </div>
+        <div class="header__right">
+          <span class="header__count" id="count">0 ACT</span>
+          <button class="btn-clear" id="clear">LIMPIAR</button>
+        </div>
+      </div>
+      <div class="tabs">
+        <div class="tabs__item tabs__item--active" data-tab="actividades">
+          Actividades
+        </div>
+        <div class="tabs__item" data-tab="mboxes">mBoxes</div>
+      </div>
+    </div>
+
+    <div class="url-bar">
+      <div class="url-bar__indicator"></div>
+      <div class="url-bar__text" id="page-url">Sin página activa</div>
+    </div>
+
+    <div class="panel panel--active" id="panel-actividades">
+      <div class="list" id="list">
+        <div class="empty-state">
+          <span class="empty-state__icon">📡</span>
+          <p class="empty-state__text">
+            Sin capturas aún.<br />Recarga la página con la extensión activa.
+          </p>
+          <button class="btn-inject">Capturar ahora</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-mboxes">
+      <div class="stats">
+        <div class="stats__item stats__item--active">
+          <div class="stats__number" id="stat-active">—</div>
+          <div class="stats__label">En uso</div>
+        </div>
+        <div class="stats__item stats__item--free">
+          <div class="stats__number" id="stat-free">—</div>
+          <div class="stats__label">Libres</div>
+        </div>
+        <div class="stats__item stats__item--total">
+          <div class="stats__number" id="stat-total">—</div>
+          <div class="stats__label">Total DOM</div>
+        </div>
+      </div>
+      <div class="list" id="mbox-list">
+        <div class="empty-state">
+          <span class="empty-state__icon">📦</span>
+          <p class="empty-state__text">
+            Sin datos aún.<br />Recarga la página con la extensión activa.
+          </p>
+          <button class="btn-inject">Capturar ahora</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span class="footer__note" id="ts">—</span>
+      <span class="footer__note" id="edge-info">v2.0 · BCP Target Inspector</span>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
