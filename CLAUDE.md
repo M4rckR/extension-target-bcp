@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**mBox Inspector** — a Chrome extension (Manifest V3) that intercepts Adobe Target / Alloy SDK personalization responses on BCP sites (`viabcp.com`, `yoando.com.pe`) and renders them in the popup: which A/B and XT activities fired, and which mboxes are in use vs. free.
+**BCP Target Inspector** — a Chrome extension (Manifest V3) that intercepts Adobe Target / Alloy SDK personalization responses on BCP sites (`viabcp.com`, `yoando.com.pe`) and renders them in the popup: which A/B and XT activities fired, and which mboxes are in use vs. free.
 
 There is **no build, no dependencies, and no tests**. It is plain HTML/CSS/JS loaded as an unpacked extension.
 
@@ -70,6 +70,8 @@ Cross-references the DOM set (`domMboxes`) against the responded set (scopes Tar
 - **En uso** — in DOM *and* Target responded.
 - **Libre** — in DOM, no Target response.
 - **Alloy** — Target responded but no `[data-mbox]` element (e.g. VEC/decisionScope-only).
+
+**"mbox" vs. "decision scope" — same concept, two names.** viabcp.com runs Web SDK (Alloy), where Adobe renamed the legacy "mbox" to "decision scope" — they're the same thing under different SDKs/eras. BCP's own front-end still uses the `mbox` convention in the DOM (`[data-mbox]`), while Alloy requests/responds in terms of scopes. This extension straddles both worlds on purpose: `domMboxes` is what we scan from the DOM (the `mbox` side), and `decisionScopes`/`scope` in the Alloy payload is what Target actually requested/answered (the "decision scope" side). The **Alloy** category above exists specifically for scopes Target answered that have no matching `[data-mbox]` element, and `__view__` is the special scope the VEC (Visual Experience Composer) uses. Don't "unify" this terminology later — collapsing it loses the distinction the classification logic depends on.
 
 ## Gotchas
 

@@ -1,4 +1,4 @@
-# mBox Inspector — BCP Target Monitor
+# BCP Target Inspector
 
 Extensión de Chrome (Manifest V3) para el equipo de BCP que intercepta y visualiza en tiempo real las actividades de **Adobe Target / Alloy SDK** activas en la página actual.
 

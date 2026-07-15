@@ -2,6 +2,7 @@
 <html>
   <head>
     <meta charset="UTF-8" />
+    <title>BCP Target Inspector</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap"
@@ -115,6 +116,50 @@
       }
       .btn-clear:hover {
         background: rgba(255, 255, 255, 0.22);
+      }
+
+      /* Botón "Abrir en ventana independiente" — se oculta dentro de esa
+         misma ventana (body.window-mode), no tiene sentido abrir otra desde ahí. */
+      .btn-window {
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: #fff;
+        font-size: 12px;
+        width: 22px;
+        height: 22px;
+        border-radius: 4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s;
+      }
+      .btn-window:hover {
+        background: rgba(255, 255, 255, 0.22);
+      }
+      body.window-mode .btn-window {
+        display: none;
+      }
+
+      /* ── Modo ventana independiente ───────────────────────
+         Igual estructura/JS que el popup; solo se relaja el ancho fijo y el
+         tope de altura de las listas para aprovechar una ventana redimensionable
+         en vez del recuadro fijo del popup clásico. */
+      body.window-mode {
+        width: 100%;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      body.window-mode .panel--active {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+      }
+      body.window-mode .list {
+        max-height: none;
+        flex: 1;
       }
 
       /* ── Tabs ────────────────────────────────────────────── */
@@ -686,12 +731,13 @@
             <img src="assets/icon48.svg" alt="BCP" />
           </div>
           <div>
-            <div class="header__title">mBox Inspector</div>
+            <div class="header__title">BCP Target Inspector</div>
             <div class="header__subtitle">Adobe Target · Alloy Monitor</div>
           </div>
         </div>
         <div class="header__right">
           <span class="header__count" id="count">0 ACT</span>
+          <button class="btn-window" id="open-window" title="Abrir en ventana independiente">⧉</button>
           <button class="btn-clear" id="clear">LIMPIAR</button>
         </div>
       </div>

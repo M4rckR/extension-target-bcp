@@ -25,6 +25,43 @@ function showBlocked() {
 }
 
 /**
+ * Resuelve qué pestaña hay que inspeccionar: si este documento se abrió como
+ * ventana independiente (?tabId= en la URL, ver createInspectorWindow), esa
+ * pestaña puntual — aunque ya no sea la activa del navegador. Si no hay
+ * ?tabId=, el comportamiento de siempre del popup clásico: la pestaña activa
+ * de la ventana actual.
+ */
+function getInspectedTab(callback) {
+  const paramTabId = new URLSearchParams(location.search).get("tabId");
+  if (paramTabId) {
+    chrome.tabs.get(Number(paramTabId), (tab) => {
+      if (chrome.runtime.lastError) {
+        callback(null);
+        return;
+      }
+      callback(tab);
+    });
+    return;
+  }
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) =>
+    callback(tabs[0] || null),
+  );
+}
+
+/** Muestra un aviso cuando la pestaña que la ventana independiente inspeccionaba ya se cerró. */
+function showTabClosed() {
+  document.getElementById("list").innerHTML = `
+    <div class="empty-state">
+      <span class="empty-state__icon">🗙</span>
+      <p class="empty-state__text">La pestaña que esta ventana estaba<br>
+      inspeccionando ya se cerró.</p>
+    </div>`;
+  document.getElementById("count").textContent = "—";
+  document.getElementById("page-url").textContent = "Pestaña cerrada";
+  document.querySelector(".url-bar__indicator").style.background = "#e34850";
+}
+
+/**
  * Muestra un aviso cuando la pestaña activa es distinta a la página capturada.
  * Ocurre si el usuario navega sin recargar la extensión.
  */
@@ -214,9 +251,7 @@ function render(currentTabUrl) {
 // ── Botón LIMPIAR ─────────────────────────────────────────────────────────────
 document.getElementById("clear").addEventListener("click", () => {
   chrome.storage.local.set({ requests: [], domMboxes: [], digitalDataEvents: [] }, () => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      render(tabs[0]?.url || "");
-    });
+    getInspectedTab((tab) => render(tab?.url || ""));
   });
 });
 
@@ -230,11 +265,45 @@ document.getElementById("clear").addEventListener("click", () => {
  */
 document.addEventListener("click", (e) => {
   if (!e.target.classList.contains("btn-inject")) return;
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    const tabId = tabs[0]?.id;
+  getInspectedTab((tab) => {
+    const tabId = tab?.id;
     if (!tabId) return;
     chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", files: ["inject.js"] });
     chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+  });
+});
+
+/**
+ * Botón "Abrir en ventana independiente" (⧉, header). Si ya hay una ventana
+ * abierta y sigue viva, la enfoca; si no, crea una nueva apuntando a la
+ * pestaña inspeccionada actual (?tabId=) y guarda su {windowId, tabId} en
+ * storage — background.js limpia ese puntero cuando esa pestaña se cierra.
+ */
+function createInspectorWindow() {
+  getInspectedTab((tab) => {
+    if (!tab) return;
+    const url = `${chrome.runtime.getURL("popup.html")}?tabId=${tab.id}`;
+    chrome.windows.create({ url, type: "popup", width: 520, height: 720 }, (win) => {
+      const tabId = win?.tabs?.[0]?.id;
+      if (tabId) chrome.storage.local.set({ inspectorWindow: { windowId: win.id, tabId } });
+    });
+  });
+}
+
+document.getElementById("open-window")?.addEventListener("click", () => {
+  chrome.storage.local.get("inspectorWindow", (data) => {
+    const w = data.inspectorWindow;
+    if (!w) {
+      createInspectorWindow();
+      return;
+    }
+    chrome.windows.get(w.windowId, () => {
+      if (chrome.runtime.lastError) {
+        createInspectorWindow();
+      } else {
+        chrome.windows.update(w.windowId, { focused: true });
+      }
+    });
   });
 });
 
@@ -255,12 +324,21 @@ function renderInstanceInfo() {
 }
 
 // ── Carga inicial: verificar dominio y renderizar ─────────────────────────────
-chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-  const url = tabs[0]?.url || "";
-  if (!isAllowedDomain(url)) {
+// Si este documento se abrió como ventana independiente (?tabId= en la URL),
+// marcarlo para que el CSS relaje el ancho fijo y el tope de altura de las listas.
+if (new URLSearchParams(location.search).has("tabId")) {
+  document.body.classList.add("window-mode");
+}
+
+getInspectedTab((tab) => {
+  if (!tab) {
+    showTabClosed();
+    return;
+  }
+  if (!isAllowedDomain(tab.url)) {
     showBlocked();
   } else {
-    render(url);
+    render(tab.url);
     renderInstanceInfo();
   }
 });
@@ -588,8 +666,6 @@ chrome.storage.onChanged.addListener((changes) => {
     renderMboxes();
   if (activeTab === "eventos" && changes.digitalDataEvents) renderEventos();
   if (activeTab === "actividades" && changes.requests) {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) =>
-      render(tabs[0]?.url || ""),
-    );
+    getInspectedTab((tab) => render(tab?.url || ""));
   }
 });

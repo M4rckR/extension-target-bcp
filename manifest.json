@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "mBox Inspector",
+  "name": "BCP Target Inspector",
   "version": "2.0.0",
   "description": "Intercepta llamadas mbox/interact de Adobe Target",
   "permissions": ["storage", "tabs", "scripting"],
@@ -8,13 +8,16 @@
     "*://*.viabcp.com/*",
     "*://*.yoando.com.pe/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "icons": {
     "16": "assets/icon16.svg",
     "48": "assets/icon48.svg",
     "128": "assets/icon128.svg"
   },
   "action": {
-    "default_title": "mBox Inspector",
+    "default_title": "BCP Target Inspector",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "assets/icon16.svg",
