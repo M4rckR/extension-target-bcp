@@ -1,6 +1,16 @@
 const ALLOWED_DOMAINS = ["viabcp.com", "yoando.com.pe"];
 const TENANT = "bcp";
 
+// Umbral de truncado del preview de "content" en la pestaña Actividades — se
+// corta por lo que se cumpla primero. Calibrado con datos reales de
+// viabcp.com (dom-action de 1.4–6.6 KB / 42–233 líneas, mediana ~4 KB /
+// ~117 líneas): 40 líneas cubre "un vistazo" para el caso típico, y el tope
+// de caracteres protege contra un blob minificado en una sola línea gigante,
+// que un corte solo por líneas no detectaría. Nombradas acá porque si algún
+// día aparece una offer más grande, se ajustan en un solo lugar.
+const MAX_PREVIEW_LINES = 40;
+const MAX_PREVIEW_CHARS = 3000;
+
 /** Verifica que la URL pertenezca a un dominio autorizado. */
 function isAllowedDomain(url) {
   try {
@@ -149,6 +159,111 @@ function getActivityInfo(d) {
   };
 }
 
+/** Extrae type/format/selector/prehidingSelector/content del primer item de una decisión, si existe. */
+function getDomActionData(d) {
+  const data = d.items?.[0]?.data;
+  if (!data) return null;
+  return {
+    type: data.type ?? null,
+    format: data.format ?? null,
+    selector: data.selector ?? null,
+    prehidingSelector: data.prehidingSelector ?? null,
+    content: typeof data.content === "string" ? data.content : null,
+  };
+}
+
+/** Formatea un tamaño en caracteres a un indicador legible (B/KB) — de un vistazo, no una medición exacta en bytes UTF-8. */
+function formatContentSize(len) {
+  if (len < 1024) return `${len} B`;
+  return `${(len / 1024).toFixed(1)} KB`;
+}
+
+/**
+ * Trunca el content ANTES de escaparlo (nunca al revés) para que el costo de
+ * escapeHtml + inserción en el DOM sea siempre chico, sin importar el tamaño
+ * real del payload guardado. Corta por líneas (MAX_PREVIEW_LINES) o por
+ * caracteres (MAX_PREVIEW_CHARS) — lo que se cumpla primero: el de líneas
+ * cubre el caso típico (contenido con saltos de línea reales), el de
+ * caracteres protege contra un blob minificado en una sola línea gigante,
+ * que el corte por líneas no alcanzaría a detectar.
+ */
+function truncatePreview(content) {
+  const lines = content.split("\n");
+  let preview = content;
+  let truncatedByLines = false;
+  let truncatedByChars = false;
+
+  if (lines.length > MAX_PREVIEW_LINES) {
+    preview = lines.slice(0, MAX_PREVIEW_LINES).join("\n");
+    truncatedByLines = true;
+  }
+  if (preview.length > MAX_PREVIEW_CHARS) {
+    preview = preview.slice(0, MAX_PREVIEW_CHARS);
+    truncatedByChars = true;
+  }
+
+  return {
+    preview,
+    truncated: truncatedByLines || truncatedByChars,
+    truncatedByChars,
+    totalLines: lines.length,
+    previewLines: preview.split("\n").length,
+  };
+}
+
+/**
+ * Bloque expandible con metadata (type/format/selector/prehidingSelector/tamaño)
+ * y preview truncado del content de una decisión dom-action. `idx` es la
+ * posición de la decisión en lastRenderedDecisions, para que el botón
+ * "Copiar completo" pueda tomar el content ORIGINAL sin escapar por índice,
+ * sin tener que reinyectar el string completo en un atributo HTML.
+ */
+function renderActivityContent(domAction, idx) {
+  const fields = [
+    ["type", domAction.type],
+    ["format", domAction.format],
+    ["selector", domAction.selector],
+    ["prehidingSelector", domAction.prehidingSelector],
+  ].filter(([, v]) => v != null);
+
+  const hasContent = typeof domAction.content === "string";
+  if (fields.length === 0 && !hasContent) return "";
+  if (hasContent) fields.push(["tamaño", formatContentSize(domAction.content.length)]);
+
+  const metaHtml = fields
+    .map(([k, v]) => `<span class="activity__content-field"><b>${escapeHtml(k)}</b> ${escapeHtml(String(v))}</span>`)
+    .join("");
+
+  let bodyHtml = "";
+  if (hasContent) {
+    const { preview, truncated, truncatedByChars, totalLines, previewLines } = truncatePreview(domAction.content);
+    const note = !truncated
+      ? ""
+      : truncatedByChars
+        ? `Mostrando los primeros ${MAX_PREVIEW_CHARS} caracteres de ${domAction.content.length}.`
+        : `Mostrando ${previewLines} de ${totalLines} líneas.`;
+
+    bodyHtml = `
+      <pre class="raw-pre">${escapeHtml(preview)}</pre>
+      ${note ? `<div class="activity__content-note">${note}</div>` : ""}
+      <button class="btn-copy-content" data-idx="${idx}">Copiar completo</button>
+    `;
+  }
+
+  return `
+    <details class="activity__content">
+      <summary class="raw-summary">Ver contenido</summary>
+      <div class="activity__content-meta">${metaHtml}</div>
+      ${bodyHtml}
+    </details>
+  `;
+}
+
+// Última lista de decisiones renderizada en "Actividades" — referencia para
+// que el botón "Copiar completo" tome el content original por índice sin
+// tener que reinyectar el string completo en un atributo HTML.
+let lastRenderedDecisions = [];
+
 /**
  * Renderiza la pestaña "Actividades".
  * Lee requests del storage, deduplica por activity.id y genera el listado.
@@ -206,8 +321,10 @@ function render(currentTabUrl) {
 
     count.textContent = `${unique.length} ACT`;
 
+    lastRenderedDecisions = unique;
+
     list.innerHTML = unique
-      .map((d) => {
+      .map((d, idx) => {
         const scope = formatScope(d.scope);
         const { name, id, exp, actType } = getActivityInfo(d);
         const displayName = name || `Actividad ${id}`;
@@ -219,6 +336,7 @@ function render(currentTabUrl) {
         // Si no se pudo detectar el tipo, se ofrecen ambos links como hipótesis
         const urlAB = !actType ? getTargetUrl("AB", id) : null;
         const urlXT = !actType ? getTargetUrl("XT", id) : null;
+        const domAction = getDomActionData(d);
 
         return `
         <div class="activity" title="${displayName}">
@@ -241,12 +359,34 @@ function render(currentTabUrl) {
             </div>`
               : ""
           }
+          ${domAction ? renderActivityContent(domAction, idx) : ""}
         </div>
       `;
       })
       .join("");
   });
 }
+
+// Click delegado en "Copiar completo" (bloque de contenido expandido de una
+// actividad): copia el content ORIGINAL sin escapar al portapapeles — la
+// vista de arriba está truncada y escapada solo para mostrar, nunca es la fuente.
+document.getElementById("list").addEventListener("click", (e) => {
+  const btn = e.target.closest(".btn-copy-content");
+  if (!btn) return;
+  const decision = lastRenderedDecisions[Number(btn.dataset.idx)];
+  const content = decision?.items?.[0]?.data?.content;
+  if (typeof content !== "string") return;
+  navigator.clipboard
+    .writeText(content)
+    .then(() => {
+      const original = btn.textContent;
+      btn.textContent = "Copiado ✓";
+      setTimeout(() => {
+        btn.textContent = original;
+      }, 1200);
+    })
+    .catch(() => {});
+});
 
 // ── Botón LIMPIAR ─────────────────────────────────────────────────────────────
 document.getElementById("clear").addEventListener("click", () => {
@@ -542,8 +682,8 @@ function renderEventRow(e) {
       ${title ? `<div class="event-row__title">${escapeHtml(title)}</div>` : ""}
       ${meta.length ? `<div class="event-row__meta">${meta.map(escapeHtml).join(" · ")}</div>` : ""}
       <details class="event-row__raw">
-        <summary>Payload</summary>
-        <pre>${escapeHtml(rawJson)}</pre>
+        <summary class="raw-summary">Payload</summary>
+        <pre class="raw-pre">${escapeHtml(rawJson)}</pre>
       </details>
     </div>
   `;

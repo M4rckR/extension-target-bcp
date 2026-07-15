@@ -649,14 +649,17 @@
       .event-row__raw {
         margin-top: 6px;
       }
-      .event-row__raw summary {
+
+      /* ── Bloques compartidos de payload/contenido crudo (Eventos y
+         Actividades usan el mismo <summary>/<pre> monoespaciado) ─── */
+      .raw-summary {
         font-family: "IBM Plex Mono", monospace;
         font-size: 9px;
         color: var(--bcp-primary-400);
         cursor: pointer;
         user-select: none;
       }
-      .event-row__raw pre {
+      .raw-pre {
         margin-top: 5px;
         padding: 8px;
         background: var(--bcp-onsurface-040);
@@ -669,6 +672,49 @@
         max-height: 160px;
         overflow-y: auto;
         color: var(--bcp-on-text);
+      }
+
+      /* ── Contenido expandible de una actividad (pestaña Actividades) ─ */
+      .activity__content {
+        margin-top: 8px;
+      }
+      .activity__content-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 10px;
+        margin-top: 6px;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9px;
+        color: var(--bcp-onsurface-900);
+      }
+      .activity__content-field b {
+        color: var(--bcp-onsurface-400);
+        font-weight: 600;
+        margin-right: 3px;
+      }
+      .activity__content-note {
+        margin-top: 5px;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9px;
+        color: var(--bcp-secondary-500);
+      }
+      .btn-copy-content {
+        display: block;
+        margin-top: 6px;
+        background: var(--bcp-primary-040);
+        color: var(--bcp-primary-500);
+        border: 1px solid rgba(0, 48, 179, 0.15);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        padding: 3px 9px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .btn-copy-content:hover {
+        background: var(--bcp-primary-100);
       }
 
       /* ── Estado vacío ────────────────────────────────────── */
