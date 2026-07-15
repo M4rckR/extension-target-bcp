@@ -28,6 +28,7 @@ chrome.storage.local.get("tabUrl", (data) => {
       requests: [],
       domMboxes: [],
       instanceInfo: null,
+      digitalDataEvents: [],
       tabUrl: window.location.href,
     });
   } else {
@@ -81,6 +82,21 @@ window.addEventListener("message", (event) => {
   // Útil para confirmar que la página apunta al datastream correcto.
   if (event.data.type === "instanceInfo") {
     chrome.storage.local.set({ instanceInfo: event.data.payload });
+  }
+
+  // Push crudo a window.digitalData (Adobe Client Data Layer), capturado
+  // antes de que Launch lo procese — ver hookPushProperty en inject.js.
+  if (event.data.type === "digitalDataPush") {
+    const entry = {
+      payload: event.data.payload,
+      time: new Date(event.data.timestamp).toISOString(),
+      timeSincePageLoad: event.data.timeSincePageLoad,
+    };
+    chrome.storage.local.get("digitalDataEvents", (data) => {
+      const events = data.digitalDataEvents || [];
+      events.unshift(entry);
+      chrome.storage.local.set({ digitalDataEvents: events.slice(0, 50) });
+    });
   }
 });
 

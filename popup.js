@@ -213,7 +213,7 @@ function render(currentTabUrl) {
 
 // ── Botón LIMPIAR ─────────────────────────────────────────────────────────────
 document.getElementById("clear").addEventListener("click", () => {
-  chrome.storage.local.set({ requests: [], domMboxes: [] }, () => {
+  chrome.storage.local.set({ requests: [], domMboxes: [], digitalDataEvents: [] }, () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       render(tabs[0]?.url || "");
     });
@@ -279,6 +279,7 @@ document.querySelectorAll(".tabs__item").forEach((tab) => {
       .getElementById(`panel-${tab.dataset.tab}`)
       .classList.add("panel--active");
     if (tab.dataset.tab === "mboxes") renderMboxes();
+    if (tab.dataset.tab === "eventos") renderEventos();
   });
 });
 
@@ -387,6 +388,196 @@ function renderMboxes() {
   });
 }
 
+/** Escapa HTML para interpolar valores del payload crudo de digitalData sin XSS. */
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Extrae un resumen legible de un push a digitalData: el campo `event` como
+ * tag, y el primer objeto anidado con `.name` (patrón "promotion", "product",
+ * etc.) como título + el resto de sus campos como metadata. Si el payload no
+ * sigue ese patrón, no hay resumen — el payload crudo siempre se muestra
+ * completo abajo, sin depender de esta heurística.
+ */
+function getEventSummary(payload) {
+  const eventName =
+    (payload && typeof payload === "object" && typeof payload.event === "string"
+      ? payload.event
+      : null) || "push";
+
+  let subject = null;
+  if (payload && typeof payload === "object") {
+    for (const [key, value] of Object.entries(payload)) {
+      if (key === "event") continue;
+      if (value && typeof value === "object" && !Array.isArray(value) && typeof value.name === "string") {
+        subject = value;
+        break;
+      }
+    }
+  }
+
+  const title = subject?.name || null;
+  const meta = subject
+    ? Object.entries(subject)
+        .filter(([k]) => k !== "name")
+        .map(([, v]) => v)
+        .filter((v) => typeof v === "string" || typeof v === "number")
+    : [];
+
+  return { eventName, title, meta };
+}
+
+// Estado de los chips de filtro por event name. Efímero a propósito: vive
+// solo en memoria mientras el popup está abierto (nunca se escribe a
+// chrome.storage), para que un chip apagado en una sesión anterior no
+// esconda eventos nuevos sin que el usuario se dé cuenta. Solo se le agregan
+// claves (nunca se resetea a vacío) para no perder el toggle del usuario
+// cuando llegan eventos nuevos mientras el popup sigue abierto.
+const eventFilterState = new Map();
+
+/** Renderiza una sola ocurrencia de evento (nombre, hora, resumen y payload crudo colapsable). */
+function renderEventRow(e) {
+  const { eventName, title, meta } = getEventSummary(e.payload);
+  const time = new Date(e.time).toLocaleTimeString("es-PE");
+  const sincePageLoad =
+    typeof e.timeSincePageLoad === "number"
+      ? `+${(e.timeSincePageLoad / 1000).toFixed(1)}s`
+      : "";
+  const rawJson = (() => {
+    try {
+      return JSON.stringify(e.payload, null, 2);
+    } catch (err) {
+      return String(e.payload);
+    }
+  })();
+
+  return `
+    <div class="event-row">
+      <div class="event-row__header">
+        <span class="event-tag">${escapeHtml(eventName)}</span>
+        <span class="event-row__time">${time}${sincePageLoad ? " · " + sincePageLoad : ""}</span>
+      </div>
+      ${title ? `<div class="event-row__title">${escapeHtml(title)}</div>` : ""}
+      ${meta.length ? `<div class="event-row__meta">${meta.map(escapeHtml).join(" · ")}</div>` : ""}
+      <details class="event-row__raw">
+        <summary>Payload</summary>
+        <pre>${escapeHtml(rawJson)}</pre>
+      </details>
+    </div>
+  `;
+}
+
+/**
+ * Agrupa corridas de eventos consecutivos con el mismo event name (sin otro
+ * event name distinto en el medio) — p.ej. scroll,scroll,view,scroll da dos
+ * grupos de scroll (2 y 1), no uno de 3, para no perder el orden temporal.
+ * `events` viene más reciente primero; cada grupo preserva ese mismo orden.
+ */
+function groupConsecutiveEvents(events) {
+  const groups = [];
+  events.forEach((e) => {
+    const key = getEventSummary(e.payload).eventName;
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.items.push(e);
+    else groups.push({ key, items: [e] });
+  });
+  return groups;
+}
+
+/**
+ * Renderiza la pestaña "Eventos": pushes crudos a window.digitalData
+ * capturados por inject.js (ver hookPushProperty), más recientes primero.
+ * Arriba de la lista genera un chip por cada event name presente en los
+ * datos capturados (con su conteo); por default todos están activos.
+ * Corridas consecutivas del mismo event name (p.ej. varios trackScroll
+ * seguidos) se colapsan en una fila expandible; los eventos que no se
+ * repiten seguido se muestran expandidos directamente, sin click extra.
+ */
+function renderEventos() {
+  chrome.storage.local.get("digitalDataEvents", (data) => {
+    const events = data.digitalDataEvents || [];
+    const list = document.getElementById("event-list");
+    const filters = document.getElementById("event-filters");
+
+    if (events.length === 0) {
+      filters.innerHTML = "";
+      list.innerHTML = `<div class="empty-state"><span class="empty-state__icon">🛰️</span><p class="empty-state__text">Sin eventos aún.<br>Interactuá con la página para ver los pushes de digitalData.</p><button class="btn-inject">Capturar ahora</button></div>`;
+      return;
+    }
+
+    // Conteo por event name + alta de nombres nuevos en el filtro (default: activo)
+    const counts = new Map();
+    events.forEach((e) => {
+      const key = getEventSummary(e.payload).eventName;
+      counts.set(key, (counts.get(key) || 0) + 1);
+      if (!eventFilterState.has(key)) eventFilterState.set(key, true);
+    });
+
+    filters.innerHTML = [...counts.entries()]
+      .map(([key, count]) => {
+        const active = eventFilterState.get(key);
+        return `<button class="event-filter${active ? " event-filter--active" : ""}" data-event="${escapeHtml(key)}">${escapeHtml(key)} · ${count}</button>`;
+      })
+      .join("");
+
+    const visible = events.filter((e) => eventFilterState.get(getEventSummary(e.payload).eventName));
+
+    if (visible.length === 0) {
+      list.innerHTML = `<div class="empty-state"><span class="empty-state__icon">🔇</span><p class="empty-state__text">Todos los eventos están filtrados.<br>Activá algún chip arriba para verlos.</p></div>`;
+      return;
+    }
+
+    list.innerHTML = groupConsecutiveEvents(visible)
+      .map((g) => {
+        if (g.items.length === 1) return renderEventRow(g.items[0]);
+
+        // items[0] es el más reciente del grupo (visible viene más reciente primero)
+        const newest = new Date(g.items[0].time).toLocaleTimeString("es-PE");
+        const oldest = new Date(g.items[g.items.length - 1].time).toLocaleTimeString("es-PE");
+        const timeLabel = oldest === newest ? newest : `${oldest} → ${newest}`;
+
+        return `
+        <div class="event-group">
+          <div class="event-group__header">
+            <span class="event-tag">${escapeHtml(g.key)} · ${g.items.length}</span>
+            <span class="event-row__time">${timeLabel}</span>
+            <span class="event-group__chevron">▸</span>
+          </div>
+          <div class="event-group__items">
+            ${g.items.map(renderEventRow).join("")}
+          </div>
+        </div>
+      `;
+      })
+      .join("");
+  });
+}
+
+// Click delegado en los chips de filtro: togglea el estado en memoria y
+// vuelve a renderizar (chips + lista). El listener vive en el contenedor,
+// que nunca se reemplaza entero — solo su innerHTML — así que alcanza con
+// registrarlo una vez.
+document.getElementById("event-filters").addEventListener("click", (e) => {
+  const chip = e.target.closest(".event-filter");
+  if (!chip) return;
+  const key = chip.dataset.event;
+  eventFilterState.set(key, !eventFilterState.get(key));
+  renderEventos();
+});
+
+// Click delegado para expandir/colapsar un grupo de eventos consecutivos.
+// Es un toggle puro de DOM (sin estado guardado): cada re-render de la
+// lista arranca colapsada de nuevo, igual que el <details> de cada payload.
+document.getElementById("event-list").addEventListener("click", (e) => {
+  const header = e.target.closest(".event-group__header");
+  if (!header) return;
+  header.closest(".event-group").classList.toggle("event-group--expanded");
+});
+
 // ── Live update: re-renderiza cuando cambia el storage ───────────────────────
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.instanceInfo) renderInstanceInfo();
@@ -395,6 +586,7 @@ chrome.storage.onChanged.addListener((changes) => {
   if (!activeTab) return;
   if (activeTab === "mboxes" && (changes.requests || changes.domMboxes))
     renderMboxes();
+  if (activeTab === "eventos" && changes.digitalDataEvents) renderEventos();
   if (activeTab === "actividades" && changes.requests) {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) =>
       render(tabs[0]?.url || ""),

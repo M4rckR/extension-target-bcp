@@ -80,4 +80,81 @@ let scanTimer = null;
 const observer = new MutationObserver(() => { clearTimeout(scanTimer); scanTimer = setTimeout(scanDomMboxes, 200); });
 observer.observe(document.documentElement, { childList: true, subtree: true });
 
+// ── 4. Capturar digitalData.push (eventos crudos de tracking) ───────────────
+// Las offers de Target hacen `window.digitalData = window.digitalData || [];
+// window.digitalData.push({...})`. En viabcp.com digitalData es en realidad
+// una instancia de Adobe Client Data Layer (ACDL): tiene .push/.getState/
+// .addEventListener propios, no es un array plano. ACDL se inicializa async
+// (vía Launch) y en ese momento pisa `.push` con su propia función — si solo
+// envolviéramos `.push` una vez, ese pisado posterior de ACDL borraría
+// nuestro hook sin avisar. Por eso hookeamos en dos capas:
+//   A) un accessor en window.digitalData → detecta cuando se (re)asigna el
+//      array completo (pasa una sola vez, al inicializar ACDL).
+//   B) un accessor en la propiedad .push de ESE array → detecta tanto los
+//      pushes de las offers como el momento en que ACDL reemplaza .push,
+//      y envuelve esa nueva función en vez de perder el hook.
+// Corre en document_start, antes que cualquier script de la página, así que
+// llegamos siempre primero sin importar si digitalData ya existe o no.
+//
+// Es exclusivamente observacional: nunca se altera el array real, nunca se
+// atrapan errores de la llamada real (si la offer o ACDL tiran, deben seguir
+// tirando igual que sin esta extensión), y todo el bloque está en un
+// try/catch — si algo falla, se degrada a "no capturamos eventos" sin tocar
+// el resto de inject.js ni el comportamiento de la página.
+try {
+  const DL_NAME = "digitalData";
+
+  function wrapPush(realPush) {
+    if (typeof realPush !== "function" || realPush.__mboxWrapped) return realPush;
+    const wrapped = function (...args) {
+      try {
+        window.postMessage({
+          source: "mbox-inspector",
+          type: "digitalDataPush",
+          payload: args.length === 1 ? args[0] : args,
+          timestamp: Date.now(),
+          timeSincePageLoad: window.performance ? window.performance.now() : null,
+        }, "*");
+      } catch (e) {
+        // nunca dejar que un fallo de captura afecte la llamada real
+      }
+      return realPush.apply(this, args);
+    };
+    wrapped.__mboxWrapped = true;
+    return wrapped;
+  }
+
+  function hookPushProperty(arr) {
+    if (!arr || arr.__mboxPushHooked) return;
+    try {
+      let current = wrapPush(typeof arr.push === "function" ? arr.push : Array.prototype.push);
+      Object.defineProperty(arr, "push", {
+        configurable: true,
+        enumerable: false,
+        get() { return current; },
+        set(fn) { current = wrapPush(fn); },
+      });
+      Object.defineProperty(arr, "__mboxPushHooked", { value: true, enumerable: false });
+    } catch (e) {
+      // digitalData no permitió instrumentar .push (p.ej. no configurable) — no capturamos.
+    }
+  }
+
+  let currentDL = window[DL_NAME];
+  if (currentDL) hookPushProperty(currentDL);
+
+  Object.defineProperty(window, DL_NAME, {
+    configurable: true,
+    enumerable: true,
+    get() { return currentDL; },
+    set(value) {
+      currentDL = value;
+      hookPushProperty(currentDL);
+    },
+  });
+} catch (e) {
+  // window.digitalData no se pudo instrumentar — la extensión sigue funcionando
+  // normalmente, solo sin la pestaña de Eventos.
+}
+
 } // fin guard __mboxInspectorInjected

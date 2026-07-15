@@ -471,6 +471,161 @@
         border: 1px solid rgba(255, 120, 0, 0.25);
       }
 
+      /* ── Chips de filtro por event name (pestaña Eventos) ── */
+      .event-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--bcp-onsurface-100);
+        background: var(--bcp-surface);
+      }
+      .event-filter {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        padding: 3px 9px;
+        border-radius: 20px;
+        border: 1px solid var(--bcp-onsurface-100);
+        background: #fff;
+        color: var(--bcp-onsurface-400);
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+      }
+      .event-filter:hover {
+        border-color: var(--bcp-primary-400);
+      }
+      .event-filter--active {
+        background: var(--bcp-primary-040);
+        color: var(--bcp-primary-500);
+        border-color: rgba(0, 48, 179, 0.25);
+      }
+
+      /* ── Grupo de eventos consecutivos colapsado (pestaña Eventos) ─ */
+      .event-group {
+        border-bottom: 1px solid var(--bcp-onsurface-100);
+      }
+      .event-group:last-child {
+        border-bottom: none;
+      }
+      .event-group__header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 16px 11px;
+        cursor: pointer;
+        transition: background 0.1s;
+        user-select: none;
+      }
+      .event-group__header:hover {
+        background: var(--bcp-primary-040);
+      }
+      .event-group__header .event-row__time {
+        flex: 1;
+      }
+      .event-group__chevron {
+        font-size: 9px;
+        color: var(--bcp-onsurface-400);
+        transition: transform 0.15s;
+      }
+      .event-group--expanded .event-group__chevron {
+        transform: rotate(90deg);
+      }
+      .event-group__items {
+        display: none;
+        background: var(--bcp-onsurface-040);
+      }
+      .event-group--expanded .event-group__items {
+        display: block;
+      }
+      .event-group__items .event-row {
+        padding-left: 28px;
+      }
+
+      /* ── Fila de evento (pestaña Eventos) ────────────────── */
+      .event-row {
+        padding: 10px 16px 11px;
+        border-bottom: 1px solid var(--bcp-onsurface-100);
+        transition: background 0.1s;
+      }
+      .event-row:nth-child(even) {
+        background: var(--bcp-onsurface-040);
+      }
+      .event-row:nth-child(odd) {
+        background: #fff;
+      }
+      .event-row:hover {
+        background: var(--bcp-primary-040);
+      }
+      .event-row:last-child {
+        border-bottom: none;
+      }
+      .event-row__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+      .event-tag {
+        display: inline-block;
+        font-size: 8px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-family: "IBM Plex Mono", monospace;
+        background: var(--bcp-primary-040);
+        color: var(--bcp-primary-500);
+        border: 1px solid rgba(0, 48, 179, 0.15);
+        white-space: nowrap;
+      }
+      .event-row__time {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9px;
+        color: var(--bcp-onsurface-400);
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .event-row__title {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--bcp-on-text);
+        line-height: 1.4;
+      }
+      .event-row__meta {
+        font-size: 10px;
+        color: var(--bcp-onsurface-900);
+        margin-top: 2px;
+      }
+      .event-row__raw {
+        margin-top: 6px;
+      }
+      .event-row__raw summary {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9px;
+        color: var(--bcp-primary-400);
+        cursor: pointer;
+        user-select: none;
+      }
+      .event-row__raw pre {
+        margin-top: 5px;
+        padding: 8px;
+        background: var(--bcp-onsurface-040);
+        border-radius: 4px;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 160px;
+        overflow-y: auto;
+        color: var(--bcp-on-text);
+      }
+
       /* ── Estado vacío ────────────────────────────────────── */
       .empty-state {
         padding: 44px 0;
@@ -545,6 +700,7 @@
           Actividades
         </div>
         <div class="tabs__item" data-tab="mboxes">mBoxes</div>
+        <div class="tabs__item" data-tab="eventos">Eventos</div>
       </div>
     </div>
 
@@ -585,6 +741,20 @@
           <span class="empty-state__icon">📦</span>
           <p class="empty-state__text">
             Sin datos aún.<br />Recarga la página con la extensión activa.
+          </p>
+          <button class="btn-inject">Capturar ahora</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-eventos">
+      <div class="event-filters" id="event-filters"></div>
+      <div class="list" id="event-list">
+        <div class="empty-state">
+          <span class="empty-state__icon">🛰️</span>
+          <p class="empty-state__text">
+            Sin eventos aún.<br />Interactuá con la página para ver los
+            pushes de digitalData.
           </p>
           <button class="btn-inject">Capturar ahora</button>
         </div>
