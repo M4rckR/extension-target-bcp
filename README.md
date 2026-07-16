@@ -1,6 +1,6 @@
 # BCP Target Inspector
 
-Extensión de Chrome (Manifest V3) para el equipo de BCP que intercepta y visualiza en tiempo real las actividades de **Adobe Target / Alloy SDK** y los eventos de **tracking (`window.digitalData`)** activos en la página actual.
+Extensión de Chrome (Manifest V3) para el equipo de BCP que intercepta y visualiza en tiempo real las actividades de **Adobe Target / Alloy SDK** y los eventos de **tracking (`window.digitalData`)** activos en la página actual. La captura es puramente observacional: no altera el data layer ni el comportamiento del sitio. La única excepción es la pestaña **QA**, que sí escribe: setea la cookie `at_qa_mode` y recarga la página para activar el modo preview de Target.
 
 ---
 
@@ -25,7 +25,7 @@ La extensión solo se activa en:
 
 - `viabcp.com` (y subdominios, p. ej. `mitarjetabcp.viabcp.com`)
 
-En cualquier otra pestaña el popup muestra un aviso de dominio no permitido.
+En cualquier otra pestaña la ventana muestra un aviso de dominio no permitido.
 
 ---
 
@@ -62,6 +62,7 @@ Esa ventana sigue apuntando a la pestaña que estaba activa cuando la abriste, n
 - Si el tipo de actividad no se pudo detectar automáticamente (A/B o XT), la extensión muestra ambos botones como hipótesis para que puedas elegir.
 - En "Eventos", los chips de filtro son efímeros: se resetean cada vez que reabrís la ventana, para que un chip apagado de una sesión anterior nunca te esconda un evento nuevo sin que te des cuenta. La sección de la página más reciente del recorrido arranca expandida; las anteriores, colapsadas.
 - El preview de `content` en "Actividades" está truncado a propósito (40 líneas o 3000 caracteres, lo que ocurra primero) — para ver el contenido completo (HTML/JS grande de una offer), usá **Copiar completo** y pegalo en tu editor.
+- Si una pestaña ya estaba abierta antes de instalar/recargar la extensión, no hace falta recargarla: el estado vacío de Actividades/mBoxes/Eventos tiene un botón **Capturar ahora** que reinyecta la captura sin perder lo que tenías abierto en esa pestaña.
 
 ---
 
@@ -83,6 +84,7 @@ Página web (viabcp.com)
   │                         ▼
   └─ content.js  (world: ISOLATED, document_start)
        Actúa como puente: escucha los mensajes y los persiste en storage
+       (get→modificar→set serializado por una cola de promesas, ver abajo)
                          │
                 chrome.storage.local
    { requests, domMboxes, digitalDataEvents, instanceInfo, tabUrl, qaMode }
@@ -116,6 +118,16 @@ En viabcp.com, `digitalData` es una instancia de **Adobe Client Data Layer (ACDL
 2. Un accessor en la propiedad `.push` de ese array → captura tanto los pushes de las offers como el momento en que ACDL reemplaza `.push`, envolviendo esa nueva función en vez de perder el hook.
 
 Todo el bloque corre en `document_start` (antes que cualquier script de la página) y está envuelto en `try/catch`: si algo falla, se degrada a "no capturamos eventos" sin tocar el resto de `inject.js` ni el comportamiento real del data layer — es puramente observacional, nunca altera ni interrumpe la llamada real.
+
+### Serialización de escrituras a `chrome.storage.local`
+
+Todo handler de `content.js` que hace lectura-modificación-escritura (`get` → mergear/`unshift` → `set`) pasa por `enqueueStorageTask` (`content.js:83`), una cola de promesas encadenadas sobre una única `storageQueue` global — cada tarea (la unidad completa get→modificar→set) espera a que la anterior termine antes de arrancar.
+
+**Por qué:** `chrome.storage.local.get` es asíncrono. Sin la cola, dos mensajes casi simultáneos leen el mismo array base y el `set()` que aterriza último pisa por completo al que aterrizó primero — determinístico, gana siempre el último en escribir. Reproducido y verificado con logs con timestamp: dos `digitalData.push()` seguidos (dos `trackPromotionClick` consecutivos) perdían siempre el primero.
+
+**Afecta a:** `alloyResponse`, `domMboxes`, `decisionScopes`, `digitalDataPush`, y el reset de página al inicio del archivo — los cinco hacen get→modificar→set. `instanceInfo` y `qaMode` quedan afuera a propósito: son `set()` puros sin lectura previa, no tienen esta carrera.
+
+**Esta carrera existía desde el día uno en `alloyResponse`** — en ráfagas de respuestas de Alloy (varias decisions llegando casi juntas) se podían perder decisions en silencio, mostrando de menos en la pestaña Actividades sin ningún aviso.
 
 ### Ventana independiente (`background.js`, único entry point)
 
@@ -166,7 +178,7 @@ Todo se guarda localmente en `chrome.storage.local` (solo en tu navegador, nunca
 | --- | --- | --- | --- |
 | `requests` | Últimas respuestas de Target (payload completo + URL + timestamp) | 50 entradas | No — foto del estado actual |
 | `domMboxes` | Nombres de mboxes encontrados en el DOM o pedidos vía `decisionScopes` | Sin límite | No — foto del estado actual |
-| `digitalDataEvents` | Pushes crudos a `window.digitalData` (payload + timestamp + tiempo desde carga + `pageUrl` de origen) | 500 entradas | **Sí** — es un recorrido, no una foto (ver "Datos que se almacenan" abajo) |
+| `digitalDataEvents` | Pushes crudos a `window.digitalData` (payload + timestamp + tiempo desde carga + `pageUrl` de origen) | 500 entradas | **Sí** — es un recorrido, no una foto (ver el porqué del límite abajo) |
 | `instanceInfo` | orgId/edgeConfigId/edgeDomain de la instancia de Alloy activa | — | No |
 | `qaMode` | Estado de la cookie `at_qa_mode` detectado en la pestaña, o `{active:false}` | — | Se recalcula en cada carga de página |
 | `inspectorWindow` | Puntero `{windowId, tabId}` de la ventana independiente abierta, si hay una | — | — |
@@ -180,7 +192,7 @@ El botón **LIMPIAR**, y las transiciones de modo QA (Activar/Aplicar cambio/Sal
 
 ## Versión
 
-`v2.0.0`
+`v2.1.0`
 
 ---
 
@@ -192,4 +204,4 @@ Squad Tarjeta de Crédito — BCP
 
 ### Colaboradores
 
-**Jose Perez** — idea original de la pestaña QA (activar/reaplicar/limpiar el modo preview de Target desde la extensión). El análisis de la cookie `at_qa_mode` y la implementación portada a este proyecto (ver `referencia2/` en "Reference material" de CLAUDE.md) partieron de esa idea.
+**Jose Perez** — idea original de la pestaña QA (activar/reaplicar/limpiar el modo preview de Target desde la extensión). El análisis de la cookie `at_qa_mode` y la implementación portada a este proyecto partieron de esa idea (ver "QA mode" en CLAUDE.md para el detalle técnico).

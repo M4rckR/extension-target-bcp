@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BCP Target Inspector",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Intercepta llamadas mbox/interact de Adobe Target",
   "permissions": ["storage", "tabs", "scripting"],
   "host_permissions": ["*://*.viabcp.com/*"],

@@ -434,7 +434,7 @@ function renderInstanceInfo() {
     const el = document.getElementById("edge-info");
     const info = data.instanceInfo;
     if (!info) {
-      el.textContent = "v2.0 · BCP Target Inspector";
+      el.textContent = "v2.1 · BCP Target Inspector";
       el.title = "";
       return;
     }
