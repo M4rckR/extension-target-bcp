@@ -162,6 +162,7 @@ Cross-references the DOM set (`domMboxes`) against the responded set (scopes Tar
 - `popup.js` hard-codes DOM IDs/classes it expects from `popup.html`: `#list`, `#count`, `#page-url`, `#ts`, `#mbox-list`, `#clear`, `.stat-*`, `.tabs__item[data-tab]`, `.panel`, `.url-bar__indicator`. Renaming in the HTML silently breaks rendering.
 - The allowed-domain list is duplicated in **two** places that must stay in sync: `ALLOWED_DOMAINS` in `popup.js` (gates the popup) and the `manifest.json` `host_permissions` + both `content_scripts.matches` blocks (gates injection).
 - `popup.html` CSS uses BEM naming; keep it consistent when adding UI.
+- `content.js` never calls `chrome.storage.local.get`/`.set` directly — always through `safeStorageGet`/`safeStorageSet`, which no-op if `chrome.runtime.id` is `undefined` (extension context invalidated, e.g. the extension got reloaded while this content script was still injected in an already-open tab — `inject.js` has no `chrome.*` bindings so it keeps posting messages regardless, and the orphaned `content.js` would otherwise throw "Extension context invalidated" on every one). Adding a new `chrome.storage.local` call site directly instead of through the wrappers reintroduces that noise. `popup.js`/`background.js` don't need this: they run as extension pages/the service worker, which get torn down (not orphaned) when the extension reloads.
 
 ## Adding a new domain
 
