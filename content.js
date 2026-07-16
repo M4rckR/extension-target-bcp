@@ -84,6 +84,15 @@ window.addEventListener("message", (event) => {
     chrome.storage.local.set({ instanceInfo: event.data.payload });
   }
 
+  // Estado de la cookie at_qa_mode, detectado por inject.js en cada carga de
+  // página (ver ahí el porqué de leerla en world: MAIN). Se sobreescribe
+  // completo en cada load — no se mergea con el reset de "cambio de página"
+  // de arriba porque la cookie sigue aplicando aunque el usuario navegue a
+  // otra ruta del mismo dominio (path=/).
+  if (event.data.type === "qaMode") {
+    chrome.storage.local.set({ qaMode: event.data.payload });
+  }
+
   // Push crudo a window.digitalData (Adobe Client Data Layer), capturado
   // antes de que Launch lo procese — ver hookPushProperty en inject.js.
   if (event.data.type === "digitalDataPush") {

@@ -388,9 +388,23 @@ document.getElementById("list").addEventListener("click", (e) => {
     .catch(() => {});
 });
 
+/**
+ * Limpia todo lo capturado (requests/domMboxes/digitalDataEvents). La usa el
+ * botón LIMPIAR y también las transiciones de modo QA (Activar/Aplicar
+ * cambio/Salir) — cada una de esas recarga la MISMA url, así que el reset
+ * automático por cambio de página de content.js no dispara, y sin este
+ * clear explícito las decisions de antes/después de QA quedarían mezcladas
+ * en la misma lista.
+ */
+function clearCapturedData(callback) {
+  chrome.storage.local.set({ requests: [], domMboxes: [], digitalDataEvents: [] }, () => {
+    callback && callback();
+  });
+}
+
 // ── Botón LIMPIAR ─────────────────────────────────────────────────────────────
 document.getElementById("clear").addEventListener("click", () => {
-  chrome.storage.local.set({ requests: [], domMboxes: [], digitalDataEvents: [] }, () => {
+  clearCapturedData(() => {
     getInspectedTab((tab) => render(tab?.url || ""));
   });
 });
@@ -480,6 +494,7 @@ getInspectedTab((tab) => {
   } else {
     render(tab.url);
     renderInstanceInfo();
+    chrome.storage.local.get("qaMode", (data) => renderQaBanner(data.qaMode));
   }
 });
 
@@ -498,6 +513,9 @@ document.querySelectorAll(".tabs__item").forEach((tab) => {
       .classList.add("panel--active");
     if (tab.dataset.tab === "mboxes") renderMboxes();
     if (tab.dataset.tab === "eventos") renderEventos();
+    if (tab.dataset.tab === "qa") {
+      chrome.storage.local.get("qaMode", (data) => renderQaTab(data.qaMode));
+    }
   });
 });
 
@@ -796,9 +814,293 @@ document.getElementById("event-list").addEventListener("click", (e) => {
   header.closest(".event-group").classList.toggle("event-group--expanded");
 });
 
+// ── Pestaña QA ──────────────────────────────────────────────────────────────
+//
+// Portado de referencia2/ (setear/borrar at_qa_mode vía document.cookie en
+// la pestaña inspeccionada), con dos agregados: el toggle de
+// listedActivitiesOnly reaplica la cookie sin volver a pegar el link, y el
+// banner detecta la cookie en cada carga de página en vez de asumir que la
+// activamos nosotros — ver inject.js/content.js (mensaje "qaMode").
+//
+// listedActivitiesOnly confirmado en vivo contra viabcp.com: con el mismo
+// previewIndex, false devolvió las 4 actividades del scope __view__ (la
+// forzada + 3 evaluadas normal); true devolvió solo la forzada. La insignia
+// "actividad forzada" sobre una fila de Actividades se descartó a propósito:
+// el payload de personalization:decisions no trae ninguna señal (probado
+// decisionProvider, strategies, characteristics, meta) que distinga la
+// decision forzada de las demás — mapear activityIndex → activity.id no es
+// derivable del lado del cliente.
+
+/**
+ * Parsea un link QA de Target (o su querystring) a la config que necesita la
+ * cookie at_qa_mode. Nunca revienta con un link incompleto — a diferencia de
+ * referencia2/, donde un link sin at_preview_index hacía null.split() y
+ * tiraba una excepción sin mensaje.
+ */
+function parseQaLink(raw) {
+  const text = (raw || "").trim();
+  if (!text) return { ok: false, missing: "at_preview_token" };
+
+  let params;
+  try {
+    const asUrl = text.startsWith("http")
+      ? text
+      : `https://dummy.invalid/${text.startsWith("?") ? text : "?" + text}`;
+    params = new URL(asUrl).searchParams;
+  } catch (e) {
+    return { ok: false, missing: "at_preview_token" };
+  }
+
+  const token = params.get("at_preview_token");
+  if (!token) return { ok: false, missing: "at_preview_token" };
+
+  const previewIndexRaw = params.get("at_preview_index");
+  if (!previewIndexRaw) return { ok: false, missing: "at_preview_index" };
+
+  const parts = previewIndexRaw.split("_");
+  const activityIndex = Number(parts[0]);
+  if (!Number.isFinite(activityIndex)) return { ok: false, invalid: "at_preview_index" };
+
+  const previewEntry = { activityIndex };
+  if (parts.length > 1) {
+    const experienceIndex = Number(parts[1]);
+    if (!Number.isFinite(experienceIndex)) return { ok: false, invalid: "at_preview_index" };
+    previewEntry.experienceIndex = experienceIndex;
+  }
+
+  const audienceIdsRaw = params.get("at_preview_evaluate_as_true_audience_ids");
+
+  return {
+    ok: true,
+    config: {
+      token,
+      listedActivitiesOnly: params.get("at_preview_listed_activities_only") === "true",
+      previewIndexes: [previewEntry],
+      evaluateAsTrueAudienceIds: audienceIdsRaw ? audienceIdsRaw.split(",") : undefined,
+    },
+  };
+}
+
+/** Construye el valor URL-encoded que va en la cookie at_qa_mode a partir de una config ya validada. */
+function cookieValueFromQaConfig(config) {
+  const qaData = {
+    token: config.token,
+    listedActivitiesOnly: !!config.listedActivitiesOnly,
+    previewIndexes: config.previewIndexes,
+  };
+  if (config.evaluateAsTrueAudienceIds?.length) {
+    qaData.evaluateAsTrueAudienceIds = config.evaluateAsTrueAudienceIds;
+  }
+  return encodeURIComponent(JSON.stringify(qaData));
+}
+
+function writeQaCookieAndReload(tabId, cookieValue) {
+  chrome.scripting.executeScript({
+    target: { tabId },
+    func: (val) => {
+      document.cookie = `at_qa_mode=${val}; path=/`;
+      location.reload();
+    },
+    args: [cookieValue],
+  });
+}
+
+function clearQaCookieAndReload(tabId) {
+  chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      document.cookie = "at_qa_mode=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 UTC";
+      location.reload();
+    },
+  });
+}
+
+/**
+ * Punto único de entrada para (re)escribir la cookie QA: limpia lo capturado
+ * ANTES de disparar el reload (no después) — si el reload arrancara primero,
+ * habría una ventana donde el inject.js de la carga nueva ya está escribiendo
+ * requests mientras acá todavía se está limpiando, y esa primera captura se
+ * pierde. Encadenando el reload en el callback de clearCapturedData, la
+ * escritura de la cookie (y el reload que dispara) no arranca hasta que el
+ * storage.local.set del clear terminó.
+ */
+function applyQaConfig(config) {
+  getInspectedTab((tab) => {
+    const tabId = tab?.id;
+    if (!tabId) return;
+    const cookieValue = cookieValueFromQaConfig(config);
+    clearCapturedData(() => writeQaCookieAndReload(tabId, cookieValue));
+  });
+}
+
+function exitQa() {
+  getInspectedTab((tab) => {
+    const tabId = tab?.id;
+    if (!tabId) return;
+    clearCapturedData(() => clearQaCookieAndReload(tabId));
+  });
+}
+
+function showQaError(res) {
+  const errorEl = document.getElementById("qa-error");
+  const field = res.missing || res.invalid;
+  errorEl.innerHTML = res.missing
+    ? `El link no parece un link QA de Target — falta <span class="mono">${field}</span>.`
+    : `El link no parece un link QA de Target — <span class="mono">${field}</span> tiene un formato inválido (esperado N o N_M).`;
+  errorEl.classList.add("qa-error--visible");
+  document.getElementById("qa-hint").style.display = "none";
+}
+
+function hideQaError() {
+  document.getElementById("qa-error").classList.remove("qa-error--visible");
+  document.getElementById("qa-hint").style.display = "block";
+}
+
+document.getElementById("qa-activate-btn").addEventListener("click", () => {
+  const res = parseQaLink(document.getElementById("qa-link-input").value);
+  if (!res.ok) {
+    showQaError(res);
+    return;
+  }
+  hideQaError();
+  applyQaConfig(res.config);
+});
+
+document.getElementById("qa-clear-btn").addEventListener("click", exitQa);
+document.getElementById("qa-banner-exit").addEventListener("click", exitQa);
+document.getElementById("qa-banner-manage").addEventListener("click", () => {
+  document.querySelector('.tabs__item[data-tab="qa"]').click();
+});
+
+/** Texto de detalle del banner: qué está forzado y qué implica el modo actual. Ver confirmación empírica arriba. */
+function qaDetailText(config) {
+  if (!config) return "No se pudo interpretar el detalle de la cookie QA detectada.";
+  const forced = config.previewIndexes[0] || {};
+  const forcedText =
+    forced.experienceIndex !== undefined
+      ? `Actividad #${forced.activityIndex} → Experiencia #${forced.experienceIndex}`
+      : `Actividad #${forced.activityIndex}`;
+  return config.listedActivitiesOnly
+    ? `${forcedText} forzada · el resto está oculto a propósito (no es un bug) — modo aislado.`
+    : `${forcedText} forzada · las demás actividades se evalúan normal, igual que para un usuario real.`;
+}
+
+/** Banner de alerta — visible en todas las pestañas, independiente de cuál esté activa. */
+function renderQaBanner(qaMode) {
+  const banner = document.getElementById("qa-banner");
+  const dot = document.getElementById("tab-qa-dot");
+  const active = !!qaMode?.active;
+  banner.classList.toggle("qa-banner--visible", active);
+  dot.style.display = active ? "inline-block" : "none";
+  if (active) {
+    document.getElementById("qa-banner-detail").textContent = qaDetailText(qaMode.config);
+  }
+}
+
+// Selección de modo pendiente en la tarjeta de config: el click en CONVIVEN/
+// OCULTAS solo resalta la opción, todavía no reescribe la cookie — eso pasa
+// recién al tocar "Aplicar cambio", para no recargar la página en cada click.
+let qaPendingListedActivitiesOnly = null;
+
+function renderQaConfigBody(qaMode) {
+  const configEl = document.getElementById("qa-config");
+  const dividerEl = document.getElementById("qa-divider");
+  const headText = document.getElementById("qa-config-head-text");
+  const body = document.getElementById("qa-config-body");
+
+  if (!qaMode?.active) {
+    configEl.classList.remove("qa-config--visible");
+    dividerEl.style.display = "none";
+    return;
+  }
+
+  configEl.classList.add("qa-config--visible");
+  dividerEl.style.display = "block";
+
+  const config = qaMode.config;
+  if (!config) {
+    headText.textContent = "Cookie QA detectada, pero no se pudo interpretar su contenido";
+    body.innerHTML = `<div class="qa-field__hint">No tiene el formato esperado — puede venir de otra herramienta. Se puede limpiar igual desde el botón de arriba.</div>`;
+    return;
+  }
+
+  headText.textContent = "Cookie QA detectada en la pestaña inspeccionada";
+  qaPendingListedActivitiesOnly = config.listedActivitiesOnly;
+
+  const forced = config.previewIndexes[0] || {};
+  const forcedText =
+    forced.experienceIndex !== undefined
+      ? `Actividad #${forced.activityIndex} → Experiencia #${forced.experienceIndex}`
+      : `Actividad #${forced.activityIndex}`;
+
+  const tokenPreview =
+    config.token.length > 10 ? `${config.token.slice(0, 6)}…${config.token.slice(-3)}` : config.token;
+
+  body.innerHTML = `
+    <div class="qa-config__row">
+      <span class="qa-config__row-label">Token</span>
+      <span class="qa-config__row-value">${escapeHtml(tokenPreview)}</span>
+    </div>
+    <div class="qa-config__row">
+      <span class="qa-config__row-label">Forzado</span>
+      <span class="qa-config__row-value qa-config__row-value--forced">${escapeHtml(forcedText)}</span>
+    </div>
+    ${
+      config.evaluateAsTrueAudienceIds?.length
+        ? `<div class="qa-config__row">
+      <span class="qa-config__row-label">Audiencia forzada como true</span>
+      <span class="qa-config__row-value">${escapeHtml(config.evaluateAsTrueAudienceIds.join(", "))}</span>
+    </div>`
+        : ""
+    }
+    <div>
+      <label class="qa-mode__label">Actividades no forzadas</label>
+      <div class="qa-mode__seg">
+        <div class="qa-mode__opt${!config.listedActivitiesOnly ? " qa-mode__opt--active" : ""}" data-mode="convive">
+          <span class="qa-mode__opt-title">CONVIVEN</span>
+          <span class="qa-mode__opt-desc">se evalúan normal, como para un usuario real</span>
+        </div>
+        <div class="qa-mode__opt${config.listedActivitiesOnly ? " qa-mode__opt--active" : ""}" data-mode="aislada">
+          <span class="qa-mode__opt-title">OCULTAS</span>
+          <span class="qa-mode__opt-desc">solo se ve la forzada, sin ruido — para debug</span>
+        </div>
+      </div>
+    </div>
+    <button class="btn-qa btn-qa--primary" id="qa-reapply-btn">Aplicar cambio (re-escribe la cookie y recarga)</button>
+  `;
+}
+
+function renderQaTab(qaMode) {
+  renderQaConfigBody(qaMode);
+}
+
+// Delegado porque #qa-config-body se reemplaza entero en cada render (los
+// botones de modo y "Aplicar cambio" no existen todavía cuando se registraría
+// un listener directo la primera vez que carga el popup).
+document.getElementById("qa-config-body").addEventListener("click", (e) => {
+  const opt = e.target.closest(".qa-mode__opt");
+  if (opt) {
+    qaPendingListedActivitiesOnly = opt.dataset.mode === "aislada";
+    document
+      .querySelectorAll(".qa-mode__opt")
+      .forEach((o) => o.classList.toggle("qa-mode__opt--active", o === opt));
+    return;
+  }
+  if (e.target.id === "qa-reapply-btn") {
+    chrome.storage.local.get("qaMode", (data) => {
+      const config = data.qaMode?.config;
+      if (!config) return;
+      applyQaConfig({ ...config, listedActivitiesOnly: qaPendingListedActivitiesOnly });
+    });
+  }
+});
+
 // ── Live update: re-renderiza cuando cambia el storage ───────────────────────
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.instanceInfo) renderInstanceInfo();
+  if (changes.qaMode) {
+    renderQaBanner(changes.qaMode.newValue);
+  }
 
   const activeTab = document.querySelector(".tabs__item--active")?.dataset?.tab;
   if (!activeTab) return;
@@ -808,4 +1110,5 @@ chrome.storage.onChanged.addListener((changes) => {
   if (activeTab === "actividades" && changes.requests) {
     getInspectedTab((tab) => render(tab?.url || ""));
   }
+  if (activeTab === "qa" && changes.qaMode) renderQaTab(changes.qaMode.newValue);
 });

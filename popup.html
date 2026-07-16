@@ -767,6 +767,298 @@
         color: var(--bcp-onsurface-400);
         font-family: "IBM Plex Mono", monospace;
       }
+
+      /* ── Banner QA (persistente, todas las pestañas) ──────── */
+      .qa-banner {
+        display: none;
+        background: var(--vec-bg);
+        border-bottom: 1px solid rgba(192, 57, 43, 0.25);
+        border-left: 3px solid var(--vec-color);
+        padding: 9px 14px 9px 12px;
+        gap: 10px;
+        align-items: flex-start;
+      }
+      .qa-banner--visible {
+        display: flex;
+      }
+      .qa-banner__icon {
+        font-size: 14px;
+        line-height: 1.3;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+      .qa-banner__body {
+        flex: 1;
+        min-width: 0;
+      }
+      .qa-banner__headline {
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--vec-color);
+        line-height: 1.4;
+      }
+      .qa-banner__detail {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9.5px;
+        color: #8a3226;
+        margin-top: 4px;
+        line-height: 1.6;
+      }
+      .qa-banner__actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .qa-banner__exit {
+        flex: 1;
+        background: var(--vec-color);
+        border: 1px solid var(--vec-color);
+        color: #fff;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        padding: 6px 8px;
+        border-radius: 5px;
+        cursor: pointer;
+        text-align: center;
+        white-space: nowrap;
+      }
+      .qa-banner__exit:hover {
+        background: #a53023;
+        border-color: #a53023;
+      }
+      .qa-banner__manage {
+        flex-shrink: 0;
+        background: transparent;
+        border: 1px solid rgba(192, 57, 43, 0.3);
+        color: var(--vec-color);
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9.5px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        padding: 6px 10px;
+        border-radius: 5px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .qa-banner__manage:hover {
+        background: #fff;
+      }
+
+      /* ── Punto en la tab QA cuando está activa ────────────── */
+      .tabs__item--qa {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .tabs__qa-dot {
+        display: none;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--vec-color);
+        flex-shrink: 0;
+        box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.35);
+      }
+
+      /* ── Pestaña QA ────────────────────────────────────────── */
+      .mono {
+        font-family: "IBM Plex Mono", monospace;
+      }
+      .qa-panel {
+        padding: 14px 16px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .qa-field__label {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--bcp-onsurface-900);
+        margin-bottom: 6px;
+        display: block;
+      }
+      .qa-field__hint {
+        font-size: 10px;
+        color: var(--bcp-onsurface-400);
+        margin-top: 5px;
+        line-height: 1.5;
+      }
+      .qa-textarea {
+        width: 100%;
+        min-height: 64px;
+        resize: vertical;
+        padding: 9px 10px;
+        border: 1px solid var(--bcp-onsurface-100);
+        border-radius: 6px;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 10.5px;
+        color: var(--bcp-on-text);
+        background: var(--bcp-onsurface-040);
+        line-height: 1.5;
+      }
+      .qa-textarea:focus {
+        outline: none;
+        border-color: var(--bcp-primary-400);
+        background: #fff;
+      }
+      .qa-error {
+        display: none;
+        margin-top: 7px;
+        font-size: 10.5px;
+        color: var(--vec-color);
+        background: var(--vec-bg);
+        border: 1px solid rgba(192, 57, 43, 0.2);
+        border-radius: 5px;
+        padding: 7px 9px;
+        line-height: 1.5;
+      }
+      .qa-error--visible {
+        display: block;
+      }
+      .qa-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .btn-qa {
+        flex: 1;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        padding: 8px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .btn-qa--primary {
+        background: var(--bcp-primary-500);
+        border: 1px solid var(--bcp-primary-500);
+        color: #fff;
+      }
+      .btn-qa--primary:hover {
+        background: var(--bcp-primary-400);
+      }
+      .btn-qa--ghost {
+        background: #fff;
+        border: 1px solid var(--bcp-onsurface-100);
+        color: var(--bcp-onsurface-900);
+      }
+      .btn-qa--ghost:hover {
+        border-color: var(--vec-color);
+        color: var(--vec-color);
+      }
+      .qa-divider {
+        height: 1px;
+        background: var(--bcp-onsurface-100);
+      }
+      .qa-config {
+        display: none;
+        border: 1px solid var(--bcp-onsurface-100);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .qa-config--visible {
+        display: block;
+      }
+      .qa-config__head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 9px 12px;
+        background: var(--bcp-onsurface-040);
+        border-bottom: 1px solid var(--bcp-onsurface-100);
+      }
+      .qa-config__dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--vec-color);
+        flex-shrink: 0;
+      }
+      .qa-config__head-text {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--bcp-onsurface-900);
+      }
+      .qa-config__body {
+        padding: 11px 12px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .qa-config__row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .qa-config__row-label {
+        font-size: 10px;
+        color: var(--bcp-onsurface-400);
+        flex-shrink: 0;
+      }
+      .qa-config__row-value {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 10.5px;
+        color: var(--bcp-on-text);
+        text-align: right;
+      }
+      .qa-config__row-value--forced {
+        color: var(--vec-color);
+        font-weight: 600;
+      }
+      .qa-mode__label {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--bcp-onsurface-900);
+        margin-bottom: 7px;
+        display: block;
+      }
+      .qa-mode__seg {
+        display: flex;
+        gap: 6px;
+      }
+      .qa-mode__opt {
+        flex: 1;
+        text-align: left;
+        cursor: pointer;
+        border-radius: 6px;
+        padding: 8px 10px;
+        border: 1px solid var(--bcp-onsurface-100);
+        background: #fff;
+        transition: border-color 0.15s, background 0.15s;
+      }
+      .qa-mode__opt-title {
+        display: block;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        color: var(--bcp-on-text);
+      }
+      .qa-mode__opt-desc {
+        display: block;
+        font-size: 9.5px;
+        color: var(--bcp-onsurface-900);
+        margin-top: 3px;
+        line-height: 1.4;
+      }
+      .qa-mode__opt--active {
+        border-color: var(--bcp-primary-500);
+        background: var(--bcp-primary-040);
+      }
+      .qa-mode__opt--active .qa-mode__opt-title {
+        color: var(--bcp-primary-500);
+      }
+      .qa-mode__opt:hover:not(.qa-mode__opt--active) {
+        border-color: var(--bcp-onsurface-400);
+      }
     </style>
   </head>
   <body>
@@ -793,6 +1085,29 @@
         </div>
         <div class="tabs__item" data-tab="mboxes">mBoxes</div>
         <div class="tabs__item" data-tab="eventos">Eventos</div>
+        <div class="tabs__item tabs__item--qa" data-tab="qa">
+          QA <span class="tabs__qa-dot" id="tab-qa-dot"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="qa-banner" id="qa-banner">
+      <div class="qa-banner__icon">⚠️</div>
+      <div class="qa-banner__body">
+        <div class="qa-banner__headline">
+          QA activo — no es un usuario real. Impresiones y conversiones no se miden.
+        </div>
+        <div class="qa-banner__detail" id="qa-banner-detail"></div>
+        <div class="qa-banner__actions">
+          <button
+            class="qa-banner__exit"
+            id="qa-banner-exit"
+            title="Borra la cookie at_qa_mode y recarga la página — vuelve a capturar tráfico real."
+          >
+            Salir de QA · recarga y captura real
+          </button>
+          <button class="qa-banner__manage" id="qa-banner-manage">Gestionar</button>
+        </div>
       </div>
     </div>
 
@@ -849,6 +1164,39 @@
             pushes de digitalData.
           </p>
           <button class="btn-inject">Capturar ahora</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-qa">
+      <div class="qa-panel">
+        <div>
+          <label class="qa-field__label">Link QA de Target</label>
+          <textarea
+            class="qa-textarea"
+            id="qa-link-input"
+            placeholder="Pegá acá el link QA que te pasó Target (con at_preview_token, at_preview_index…)"
+          ></textarea>
+          <div class="qa-error" id="qa-error"></div>
+          <div class="qa-field__hint" id="qa-hint">
+            Al activar, se escribe la cookie <span class="mono">at_qa_mode</span> en esta
+            pestaña y se recarga la página.
+          </div>
+        </div>
+
+        <div class="qa-actions">
+          <button class="btn-qa btn-qa--primary" id="qa-activate-btn">Activar QA</button>
+          <button class="btn-qa btn-qa--ghost" id="qa-clear-btn">Limpiar QA</button>
+        </div>
+
+        <div class="qa-divider" id="qa-divider" style="display: none"></div>
+
+        <div class="qa-config" id="qa-config">
+          <div class="qa-config__head">
+            <span class="qa-config__dot"></span>
+            <span class="qa-config__head-text" id="qa-config-head-text"></span>
+          </div>
+          <div class="qa-config__body" id="qa-config-body"></div>
         </div>
       </div>
     </div>

@@ -157,4 +157,43 @@ try {
   // normalmente, solo sin la pestaña de Eventos.
 }
 
+// ── 5. Detectar cookie de QA mode (at_qa_mode) ───────────────────────────────
+// at_qa_mode no es HttpOnly (el flujo de activación de la pestaña QA la
+// escribe con document.cookie), así que se lee acá mismo, en world: MAIN,
+// sin pedir el permiso "cookies" ni un chrome.scripting.executeScript aparte.
+// Se detecta en cada carga de página, sea quien sea que la haya seteado —
+// esta extensión, otra, o una sesión anterior — nunca se asume que fuimos
+// nosotros. Alcanza con revisarla una vez al cargar: activar/limpiar/cambiar
+// el modo QA siempre recarga la página, así que no hace falta polling.
+try {
+  const rawCookie = document.cookie
+    .split('; ')
+    .find((c) => c.startsWith('at_qa_mode='));
+
+  if (!rawCookie) {
+    window.postMessage({ source: 'mbox-inspector', type: 'qaMode', payload: { active: false } }, '*');
+  } else {
+    const rawValue = rawCookie.slice('at_qa_mode='.length);
+    let config = null;
+    try {
+      const parsed = JSON.parse(decodeURIComponent(rawValue));
+      if (parsed && typeof parsed.token === 'string' && Array.isArray(parsed.previewIndexes) && parsed.previewIndexes[0]) {
+        config = {
+          token: parsed.token,
+          listedActivitiesOnly: !!parsed.listedActivitiesOnly,
+          previewIndexes: parsed.previewIndexes,
+          evaluateAsTrueAudienceIds: parsed.evaluateAsTrueAudienceIds,
+        };
+      }
+    } catch (e) {
+      // Cookie presente pero no es el JSON esperado (p.ej. de otra herramienta) —
+      // se reporta igual como activa, sin detalle, para no ocultar el aviso.
+    }
+    window.postMessage({ source: 'mbox-inspector', type: 'qaMode', payload: { active: true, config } }, '*');
+  }
+} catch (e) {
+  // No se pudo leer document.cookie — se degrada sin banner de QA, el resto
+  // de la extensión sigue funcionando igual.
+}
+
 } // fin guard __mboxInspectorInjected
