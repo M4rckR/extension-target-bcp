@@ -189,3 +189,7 @@ El botón **LIMPIAR**, y las transiciones de modo QA (Activar/Aplicar cambio/Sal
 **Marcos Romero**
 MarTech Engineer · Mesa de MarTech
 Squad Tarjeta de Crédito — BCP
+
+### Colaboradores
+
+**Jose Perez** — idea original de la pestaña QA (activar/reaplicar/limpiar el modo preview de Target desde la extensión). El análisis de la cookie `at_qa_mode` y la implementación portada a este proyecto (ver `referencia2/` en "Reference material" de CLAUDE.md) partieron de esa idea.
