@@ -5,10 +5,29 @@
 if (!window.__mboxInspectorContentActive) {
 window.__mboxInspectorContentActive = true;
 
+// digitalDataEvents guarda hasta esta cantidad, más viejo primero afuera
+// (mismo mecanismo unshift+slice que requests). Medido en vivo contra
+// viabcp.com: un push típico (trackScroll/trackAction) pesa ~60-120B de
+// JSON crudo; con el wrapper {payload,time,timeSincePageLoad,pageUrl} cada
+// entrada persistida ronda ~300-500B. 500 entradas ≈ 250KB, una fracción
+// chica de los 10MB de cuota de chrome.storage.local (sin unlimitedStorage)
+// — el límite real no es cuota, es cubrir cómodamente un recorrido de
+// 30-50 páginas.
+const MAX_DIGITAL_DATA_EVENTS = 500;
+
 // ── Detección de cambio de página ────────────────────────────────────────────
 // Compara la URL guardada en storage con la URL actual (hostname + path).
-// Si cambiaron, limpia todos los datos capturados para que el popup no
-// muestre información de una página anterior.
+// Si cambiaron, limpia requests/domMboxes/instanceInfo — son una foto del
+// estado actual de la página, no un flujo, y acumularlos entre páginas
+// confundiría cuál actividad es de dónde.
+//
+// digitalDataEvents NO se resetea acá a propósito: persiste a través de la
+// navegación (ver abajo, donde cada entrada se etiqueta con pageUrl) para
+// poder recorrer el sitio y después revisar el recorrido completo — dónde
+// disparó cada push. Sí se limpia con LIMPIAR y con las transiciones de QA
+// (Activar/Aplicar cambio/Salir, ver popup.js clearCapturedData), porque
+// esos son "empezar de nuevo" explícitos, a diferencia de una navegación
+// normal dentro del mismo recorrido.
 chrome.storage.local.get("tabUrl", (data) => {
   const prevUrl = data.tabUrl || "";
   let prevPath = "";
@@ -23,12 +42,12 @@ chrome.storage.local.get("tabUrl", (data) => {
   } catch (e) {}
 
   if (prevPath !== currPath) {
-    // Nueva página — limpiar todo, incluyendo el orgId/edgeConfigId de la página anterior
+    // Nueva página — limpiar la foto del estado actual, incluyendo el
+    // orgId/edgeConfigId de la página anterior. digitalDataEvents queda afuera.
     chrome.storage.local.set({
       requests: [],
       domMboxes: [],
       instanceInfo: null,
-      digitalDataEvents: [],
       tabUrl: window.location.href,
     });
   } else {
@@ -95,16 +114,19 @@ window.addEventListener("message", (event) => {
 
   // Push crudo a window.digitalData (Adobe Client Data Layer), capturado
   // antes de que Launch lo procese — ver hookPushProperty en inject.js.
+  // pageUrl queda fijo en la página donde disparó, aunque digitalDataEvents
+  // persista más allá de esa página (ver detección de cambio de página arriba).
   if (event.data.type === "digitalDataPush") {
     const entry = {
       payload: event.data.payload,
       time: new Date(event.data.timestamp).toISOString(),
       timeSincePageLoad: event.data.timeSincePageLoad,
+      pageUrl: window.location.href,
     };
     chrome.storage.local.get("digitalDataEvents", (data) => {
       const events = data.digitalDataEvents || [];
       events.unshift(entry);
-      chrome.storage.local.set({ digitalDataEvents: events.slice(0, 50) });
+      chrome.storage.local.set({ digitalDataEvents: events.slice(0, MAX_DIGITAL_DATA_EVENTS) });
     });
   }
 });

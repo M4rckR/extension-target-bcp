@@ -15,7 +15,6 @@
   },
   "action": {
     "default_title": "BCP Target Inspector",
-    "default_popup": "popup.html",
     "default_icon": {
       "16": "assets/icon16.svg",
       "48": "assets/icon48.svg",

@@ -118,33 +118,13 @@
         background: rgba(255, 255, 255, 0.22);
       }
 
-      /* Botón "Abrir en ventana independiente" — se oculta dentro de esa
-         misma ventana (body.window-mode), no tiene sentido abrir otra desde ahí. */
-      .btn-window {
-        background: rgba(255, 255, 255, 0.12);
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        color: #fff;
-        font-size: 12px;
-        width: 22px;
-        height: 22px;
-        border-radius: 4px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: background 0.15s;
-      }
-      .btn-window:hover {
-        background: rgba(255, 255, 255, 0.22);
-      }
-      body.window-mode .btn-window {
-        display: none;
-      }
-
       /* ── Modo ventana independiente ───────────────────────
-         Igual estructura/JS que el popup; solo se relaja el ancho fijo y el
-         tope de altura de las listas para aprovechar una ventana redimensionable
-         en vez del recuadro fijo del popup clásico. */
+         Sin default_popup, este documento SIEMPRE se abre así (ver
+         background.js) — pero el selector body.window-mode se deja
+         condicional en vez de aplicar estas reglas directo a body, por si
+         popup.html se abre alguna vez sin ?tabId= (ver getInspectedTab).
+         Relaja el ancho fijo y el tope de altura de las listas para
+         aprovechar una ventana redimensionable. */
       body.window-mode {
         width: 100%;
         height: 100vh;
@@ -546,6 +526,74 @@
         background: var(--bcp-primary-040);
         color: var(--bcp-primary-500);
         border-color: rgba(0, 48, 179, 0.25);
+      }
+
+      /* ── Sección de página del recorrido (pestaña Eventos) ────────
+         Nivel único de nesting: colapsar la página oculta TODO su contenido
+         de una vez, incluidos los .event-group de abajo — nunca queda un
+         árbol de tres niveles de toggles anidados. */
+      .event-page {
+        border-bottom: 1px solid var(--bcp-onsurface-100);
+      }
+      .event-page:last-child {
+        border-bottom: none;
+      }
+      .event-page__header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 16px;
+        background: var(--bcp-onsurface-040);
+        cursor: pointer;
+        user-select: none;
+        border-bottom: 1px solid var(--bcp-onsurface-100);
+      }
+      .event-page__header:hover {
+        background: var(--bcp-primary-040);
+      }
+      .event-page__chevron {
+        font-size: 9px;
+        color: var(--bcp-onsurface-400);
+        transition: transform 0.15s;
+        flex-shrink: 0;
+      }
+      .event-page--expanded .event-page__chevron {
+        transform: rotate(90deg);
+      }
+      .event-page__path {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 10.5px;
+        font-weight: 600;
+        color: var(--bcp-on-text);
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .event-page__count {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 9px;
+        color: var(--bcp-onsurface-400);
+        flex-shrink: 0;
+      }
+      .event-page__current {
+        font-size: 8px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--bcp-primary-500);
+        background: var(--bcp-primary-040);
+        border: 1px solid rgba(0, 48, 179, 0.2);
+        padding: 1px 5px;
+        border-radius: 3px;
+        flex-shrink: 0;
+      }
+      .event-page__items {
+        display: none;
+      }
+      .event-page--expanded .event-page__items {
+        display: block;
       }
 
       /* ── Grupo de eventos consecutivos colapsado (pestaña Eventos) ─ */
@@ -1075,7 +1123,6 @@
         </div>
         <div class="header__right">
           <span class="header__count" id="count">0 ACT</span>
-          <button class="btn-window" id="open-window" title="Abrir en ventana independiente">⧉</button>
           <button class="btn-clear" id="clear">LIMPIAR</button>
         </div>
       </div>

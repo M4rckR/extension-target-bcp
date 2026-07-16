@@ -35,11 +35,12 @@ function showBlocked() {
 }
 
 /**
- * Resuelve qué pestaña hay que inspeccionar: si este documento se abrió como
- * ventana independiente (?tabId= en la URL, ver createInspectorWindow), esa
- * pestaña puntual — aunque ya no sea la activa del navegador. Si no hay
- * ?tabId=, el comportamiento de siempre del popup clásico: la pestaña activa
- * de la ventana actual.
+ * Resuelve qué pestaña hay que inspeccionar: popup.html ya no tiene
+ * default_popup, así que la única forma real de abrirlo es la ventana
+ * independiente que crea background.js (createInspectorWindow) con
+ * ?tabId= en la URL — esa pestaña puntual, aunque ya no sea la activa del
+ * navegador. El fallback de abajo (pestaña activa de la ventana actual)
+ * queda solo por si algún día este documento se abre sin ese parámetro.
  */
 function getInspectedTab(callback) {
   const paramTabId = new URLSearchParams(location.search).get("tabId");
@@ -427,40 +428,6 @@ document.addEventListener("click", (e) => {
   });
 });
 
-/**
- * Botón "Abrir en ventana independiente" (⧉, header). Si ya hay una ventana
- * abierta y sigue viva, la enfoca; si no, crea una nueva apuntando a la
- * pestaña inspeccionada actual (?tabId=) y guarda su {windowId, tabId} en
- * storage — background.js limpia ese puntero cuando esa pestaña se cierra.
- */
-function createInspectorWindow() {
-  getInspectedTab((tab) => {
-    if (!tab) return;
-    const url = `${chrome.runtime.getURL("popup.html")}?tabId=${tab.id}`;
-    chrome.windows.create({ url, type: "popup", width: 520, height: 720 }, (win) => {
-      const tabId = win?.tabs?.[0]?.id;
-      if (tabId) chrome.storage.local.set({ inspectorWindow: { windowId: win.id, tabId } });
-    });
-  });
-}
-
-document.getElementById("open-window")?.addEventListener("click", () => {
-  chrome.storage.local.get("inspectorWindow", (data) => {
-    const w = data.inspectorWindow;
-    if (!w) {
-      createInspectorWindow();
-      return;
-    }
-    chrome.windows.get(w.windowId, () => {
-      if (chrome.runtime.lastError) {
-        createInspectorWindow();
-      } else {
-        chrome.windows.update(w.windowId, { focused: true });
-      }
-    });
-  });
-});
-
 /** Muestra orgId/edgeConfigId de la instancia de Alloy en el footer (si ya se capturó). */
 function renderInstanceInfo() {
   chrome.storage.local.get("instanceInfo", (data) => {
@@ -563,8 +530,17 @@ function renderMboxes() {
     const allMboxes = new Set([...domSet, ...activeSet]);
 
     if (allMboxes.size === 0) {
+      // Dos motivos posibles y NO son lo mismo: "todavía no capturamos nada"
+      // (requests vacío, hace falta recargar) vs. "sí capturamos, pero la
+      // página no tiene ni un [data-mbox] ni un scope nombrado — todo es VEC
+      // (__view__), que se excluye a propósito de esta clasificación". El
+      // segundo caso mostraba el mismo "Sin datos aún, recargá" que el
+      // primero, lo cual hacía parecer que la captura había fallado cuando
+      // en realidad sí había actividades (visibles en Actividades).
       document.getElementById("mbox-list").innerHTML =
-        `<div class="empty-state"><span class="empty-state__icon">📦</span><p class="empty-state__text">Sin datos aún.<br>Recarga la página con la extensión activa.</p><button class="btn-inject">Capturar ahora</button></div>`;
+        requests.length === 0
+          ? `<div class="empty-state"><span class="empty-state__icon">📦</span><p class="empty-state__text">Sin datos aún.<br>Recarga la página con la extensión activa.</p><button class="btn-inject">Capturar ahora</button></div>`
+          : `<div class="empty-state"><span class="empty-state__icon">🎯</span><p class="empty-state__text">Esta página no usa mboxes nombrados — todo corre por VEC (<span class="mono">__view__</span>).<br>Mirá la pestaña <strong>Actividades</strong> para ver qué se activó.</p></div>`;
       return;
     }
 
@@ -725,13 +701,72 @@ function groupConsecutiveEvents(events) {
 }
 
 /**
+ * Agrupa corridas consecutivas del mismo pageUrl — análogo a
+ * groupConsecutiveEvents pero por página en vez de por event name. Como
+ * digitalDataEvents ahora persiste a través de la navegación (ver
+ * content.js), esto reconstruye el recorrido completo: cada página queda en
+ * su propia sección en vez de mezclarse en una sola lista plana. Entradas
+ * sin pageUrl (modelo de storage anterior a este cambio) se agrupan bajo la
+ * misma key `null` — ver formatPageLabel.
+ */
+function groupEventsByPage(events) {
+  const groups = [];
+  events.forEach((e) => {
+    const key = e.pageUrl || null;
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.items.push(e);
+    else groups.push({ key, items: [e] });
+  });
+  return groups;
+}
+
+/** hostname+pathname legible para el header de una sección de página. Sin pageUrl (entradas del modelo viejo) → bucket "Página desconocida". */
+function formatPageLabel(pageUrl) {
+  if (!pageUrl) return "Página desconocida";
+  try {
+    const url = new URL(pageUrl);
+    return url.hostname + url.pathname;
+  } catch (e) {
+    return "Página desconocida";
+  }
+}
+
+/** Renderiza corridas consecutivas de un mismo event name dentro de una lista de eventos (toda la visible, o los de una sola sección de página). */
+function renderEventGroupsHtml(events) {
+  return groupConsecutiveEvents(events)
+    .map((g) => {
+      if (g.items.length === 1) return renderEventRow(g.items[0]);
+
+      // items[0] es el más reciente del grupo (events viene más reciente primero)
+      const newest = new Date(g.items[0].time).toLocaleTimeString("es-PE");
+      const oldest = new Date(g.items[g.items.length - 1].time).toLocaleTimeString("es-PE");
+      const timeLabel = oldest === newest ? newest : `${oldest} → ${newest}`;
+
+      return `
+        <div class="event-group">
+          <div class="event-group__header">
+            <span class="event-tag">${escapeHtml(g.key)} · ${g.items.length}</span>
+            <span class="event-row__time">${timeLabel}</span>
+            <span class="event-group__chevron">▸</span>
+          </div>
+          <div class="event-group__items">
+            ${g.items.map(renderEventRow).join("")}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+/**
  * Renderiza la pestaña "Eventos": pushes crudos a window.digitalData
- * capturados por inject.js (ver hookPushProperty), más recientes primero.
- * Arriba de la lista genera un chip por cada event name presente en los
- * datos capturados (con su conteo); por default todos están activos.
- * Corridas consecutivas del mismo event name (p.ej. varios trackScroll
- * seguidos) se colapsan en una fila expandible; los eventos que no se
- * repiten seguido se muestran expandidos directamente, sin click extra.
+ * capturados por inject.js (ver hookPushProperty), más recientes primero,
+ * agrupados por página del recorrido (ver groupEventsByPage) — la sección
+ * de la página más reciente arranca expandida, el resto colapsado. Arriba
+ * de la lista genera un chip por cada event name presente en TODO el
+ * recorrido (no solo la página actual); por default todos están activos.
+ * Dentro de cada página, corridas consecutivas del mismo event name (p.ej.
+ * varios trackScroll seguidos) se colapsan en una fila expandible.
  */
 function renderEventos() {
   chrome.storage.local.get("digitalDataEvents", (data) => {
@@ -767,25 +802,19 @@ function renderEventos() {
       return;
     }
 
-    list.innerHTML = groupConsecutiveEvents(visible)
-      .map((g) => {
-        if (g.items.length === 1) return renderEventRow(g.items[0]);
-
-        // items[0] es el más reciente del grupo (visible viene más reciente primero)
-        const newest = new Date(g.items[0].time).toLocaleTimeString("es-PE");
-        const oldest = new Date(g.items[g.items.length - 1].time).toLocaleTimeString("es-PE");
-        const timeLabel = oldest === newest ? newest : `${oldest} → ${newest}`;
-
+    list.innerHTML = groupEventsByPage(visible)
+      .map((pageGroup, pageIdx) => {
+        const label = formatPageLabel(pageGroup.key);
+        const count = pageGroup.items.length;
         return `
-        <div class="event-group">
-          <div class="event-group__header">
-            <span class="event-tag">${escapeHtml(g.key)} · ${g.items.length}</span>
-            <span class="event-row__time">${timeLabel}</span>
-            <span class="event-group__chevron">▸</span>
+        <div class="event-page${pageIdx === 0 ? " event-page--expanded" : ""}">
+          <div class="event-page__header">
+            <span class="event-page__chevron">▸</span>
+            <span class="event-page__path" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+            ${pageIdx === 0 ? `<span class="event-page__current">actual</span>` : ""}
+            <span class="event-page__count">${count} evento${count === 1 ? "" : "s"}</span>
           </div>
-          <div class="event-group__items">
-            ${g.items.map(renderEventRow).join("")}
-          </div>
+          <div class="event-page__items">${renderEventGroupsHtml(pageGroup.items)}</div>
         </div>
       `;
       })
@@ -805,10 +834,19 @@ document.getElementById("event-filters").addEventListener("click", (e) => {
   renderEventos();
 });
 
-// Click delegado para expandir/colapsar un grupo de eventos consecutivos.
-// Es un toggle puro de DOM (sin estado guardado): cada re-render de la
-// lista arranca colapsada de nuevo, igual que el <details> de cada payload.
+// Click delegado para expandir/colapsar una sección de página o un grupo de
+// eventos consecutivos. Ambos son toggles puros de DOM (sin estado guardado):
+// cada re-render de la lista vuelve al estado default (página más reciente
+// expandida, el resto colapsado; grupos siempre colapsados), igual que el
+// <details> de cada payload. Se chequea event-page__header primero porque
+// .event-group__header vive DENTRO de una sección de página — un click ahí
+// no debe además togglear la página que lo contiene.
 document.getElementById("event-list").addEventListener("click", (e) => {
+  const pageHeader = e.target.closest(".event-page__header");
+  if (pageHeader) {
+    pageHeader.closest(".event-page").classList.toggle("event-page--expanded");
+    return;
+  }
   const header = e.target.closest(".event-group__header");
   if (!header) return;
   header.closest(".event-group").classList.toggle("event-group--expanded");
