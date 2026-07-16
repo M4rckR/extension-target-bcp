@@ -11,8 +11,15 @@ There is **no build, no dependencies, and no tests**. It is plain HTML/CSS/JS lo
 ## Running / developing
 
 1. `chrome://extensions/` → enable **Modo desarrollador** → **Cargar descomprimida** → select this folder.
-2. Reload the extension icon (↻) in `chrome://extensions/` after **every** change to `inject.js`, `content.js`, or `manifest.json`. Popup-only edits (`popup.html`/`popup.js`) just require reopening the popup.
-3. Capture normally happens on **page load**. For a tab that was already open before the extension was (re)loaded, the popup's empty state has a **"Capturar ahora"** button that reinjects `inject.js`/`content.js` on demand via `chrome.scripting.executeScript` — no page reload needed for that case.
+2. Reload the extension icon (↻) in `chrome://extensions/` after **every** change to `inject.js`, `content.js`, `manifest.json`, or `background.js`. Edits to `popup.html`/`popup.js` just require closing and reopening the inspector window (click the toolbar icon again) — no `default_popup` means there's no popup to reopen, only the window.
+3. Capture normally happens on **page load**. For a tab that was already open before the extension was (re)loaded, the empty state has a **"Capturar ahora"** button that reinjects `inject.js`/`content.js` on demand via `chrome.scripting.executeScript` — no page reload needed for that case.
+
+## Reference material in this repo (not our code)
+
+Two unpacked-extension folders live alongside the real source, for research only — neither is `require`d, built, or shipped:
+
+- **`referencia/`** — Adobe's own official "Experience Platform Debugger" extension, unpacked, gitignored. Kept in case work ever needs network-level capture (`chrome.debugger` or `webRequest`) — the one thing its hooks cover that ours don't, since `inject.js` only sees what Alloy chooses to expose via `window.__alloyMonitors`/`postMessage`, not raw network traffic. Do not assume anything under `referencia/` is this project's code, and do not edit it.
+- **`referencia2/`** — was a colleague's separate minimal extension ("Adobe Target QA Helper") that only did `at_qa_mode` cookie set/clear via `document.cookie`. Fully analyzed and ported into this project's QA tab (see "QA mode" below) with fixes (input validation, no `<all_urls>`, no unused `cookies` permission) — nothing left to port. Was never committed to git (always untracked, deleted after this project's QA tab absorbed it); if it reappears, it's someone re-adding reference material, not a merge conflict to resolve.
 
 ## Architecture: four scripts, one-way data flow, window-only UI
 
@@ -67,9 +74,54 @@ Cap is 500 (not 50 like `requests`): measured live against viabcp.com, a typical
 
 ### QA mode (`at_qa_mode` cookie, `.tabs__item--qa`)
 
-Sets/reapplies/clears Adobe Target's preview cookie by writing `document.cookie` via `chrome.scripting.executeScript` on the inspected tab (not the popup's own — `getInspectedTab`), then reloading it. `inject.js` detects the cookie itself on every page load (regardless of who set it — this extension, another one, or a stale session) and reports `{active, config}` via the `qaMode` message; the banner in `popup.js` renders off that, never off "did we set it this session." Confirmed live against viabcp.com: `listedActivitiesOnly: true` suppresses every activity except the ones listed in `previewIndexes`; `false` still forces those same activities' experience but leaves everything else evaluated normally (baseline 4 activities on `__view__`: `false` → 4 back, `true` → 1). The payload carries no field identifying *which* returned decision is the forced one (checked `decisionProvider`/`strategies`/`characteristics`/`meta` — identical shape on forced vs. non-forced), so there's deliberately no per-activity "forced" badge in the Actividades tab — that would be a promise the client-side code can't keep.
+Sets/reapplies/clears Adobe Target's preview cookie by writing `document.cookie` via `chrome.scripting.executeScript` on the inspected tab (not the popup's own — `getInspectedTab`), then reloading it. `inject.js` detects the cookie itself on every page load (regardless of who set it — this extension, another one, or a stale session) and reports `{active, config}` via the `qaMode` message; the banner in `popup.js` renders off that, never off "did we set it this session." The payload carries no field identifying *which* returned decision is the forced one (checked `decisionProvider`/`strategies`/`characteristics`/`meta` — identical shape on forced vs. non-forced), so there's deliberately no per-activity "forced" badge in the Actividades tab — that would be a promise the client-side code can't keep.
 
 All three transitions (Activar/Aplicar cambio/Salir) clear `requests`/`domMboxes`/`digitalDataEvents` **before** triggering the cookie write + reload (chained through the storage-clear's own callback), not after — reloading first would leave a window where the new page's `inject.js` starts writing while the clear is still in flight, dropping the first capture.
+
+#### Anatomía de la cookie `at_qa_mode`
+
+Un link de preview de Target trae los datos como query params; `parseQaLink` (`popup.js`) los traduce a la cookie que Target realmente lee:
+
+| Query param del link | Campo en la cookie | Notas |
+| --- | --- | --- |
+| `at_preview_token` | `token` | obligatorio |
+| `at_preview_index` (`"N"` o `"N_M"`) | `previewIndexes: [{ activityIndex: N, experienceIndex: M }]` | obligatorio; `experienceIndex` solo si vino el `_M` |
+| `at_preview_listed_activities_only` (`"true"`/`"false"`) | `listedActivitiesOnly` | booleano, default `false` si falta |
+| `at_preview_evaluate_as_true_audience_ids` (CSV) | `evaluateAsTrueAudienceIds: [...]` | opcional, se omite el campo entero si no vino |
+
+La cookie final es `at_qa_mode=<encodeURIComponent(JSON.stringify(qaData))>; path=/` — ver `cookieValueFromQaConfig`. `activityIndex`/`experienceIndex` son posiciones dentro del orden que usa el admin de Target para esa preview, no IDs — no son mapeables a `activity.id`/`experience.id` del lado del cliente (por eso no hay badge "forzada", ver arriba).
+
+`listedActivitiesOnly`, confirmado en vivo contra viabcp.com con el mismo `previewIndex` (activityIndex 1, experienceIndex 2) sobre el scope `__view__`:
+
+| `listedActivitiesOnly` | Decisions devueltas | Qué significa |
+| --- | --- | --- |
+| *(sin cookie QA)* | 4 (baseline real de la página) | comportamiento normal, sin preview |
+| `false` | 4 — la forzada con su experiencia overrideada + las otras 3 tal cual el baseline | conviven: útil para ver la actividad forzada en su contexto real |
+| `true` | 1 — solo la forzada | aislada: suprime todo lo demás, útil para debug sin ruido |
+
+#### Por qué `document.cookie` alcanza — sin permiso `cookies`, sin tocar la request
+
+Escribir `at_qa_mode` con `document.cookie` (world MAIN, sin ningún otro cableado) es suficiente para que Target la reciba, porque Alloy mismo se encarga de reenviarla al edge. Verificado contra el código fuente real de Alloy/Web SDK — [`adobe/alloy`](https://github.com/adobe/alloy), commit [`669172c`](https://github.com/adobe/alloy/commit/669172c164b3f4a86f4527a7ce23686c6ec03b41), Apache-2.0 — no el bundle minificado:
+
+- [`packages/core/src/core/injectShouldTransferCookie.js`](https://github.com/adobe/alloy/blob/669172c164b3f4a86f4527a7ce23686c6ec03b41/packages/core/src/core/injectShouldTransferCookie.js) construye el predicado que decide qué cookies del navegador viajan al payload que se manda al edge:
+
+  ```js
+  export default ({ orgId, targetMigrationEnabled }) =>
+    (name) => {
+      return (
+        isNamespacedCookieName(orgId, name) ||
+        name === AT_QA_MODE ||
+        (targetMigrationEnabled && name === MBOX)
+      );
+    };
+  ```
+
+- `AT_QA_MODE = "at_qa_mode"` / `MBOX = "mbox"` están en [`packages/core/src/constants/legacyCookies.js`](https://github.com/adobe/alloy/blob/669172c164b3f4a86f4527a7ce23686c6ec03b41/packages/core/src/constants/legacyCookies.js).
+- El predicado se usa en [`packages/core/src/core/createCookieTransfer.js`](https://github.com/adobe/alloy/blob/669172c164b3f4a86f4527a7ce23686c6ec03b41/packages/core/src/core/createCookieTransfer.js) → `cookiesToPayload()` hace `Object.keys(cookies).filter(shouldTransferCookie)` y mete las que califican en `state.entries` del payload saliente (cuando el endpoint no es first-party).
+
+`at_qa_mode` matchea por nombre exacto **incondicionalmente** — a diferencia de `mbox` "pelado" (legado, sin namespace), que solo se transfiere si `targetMigrationEnabled` está activo. Por eso alcanza con setear la cookie del lado del cliente: Alloy la va a levantar y reenviar sola en la próxima request, sin flags ni configuración adicional.
+
+El snippet minificado originalmente citado (bundle de Launch que carga viabcp.com en producción, `assets.adobedtm.com/.../launch-bbe39001f4e4.min.js`) usa la misma lógica con identificadores cortos (`Za`/`Ja`/`Xa`/`Ya` en vez de `injectShouldTransferCookie`/`legacyCookies`/`AT_QA_MODE`/`MBOX`) — no se volvió a descargar ese bundle en esta verificación, pero la correspondencia con el código fuente de arriba es 1:1 (mismos tres cortocircuitos, mismo orden, misma condición sobre `targetMigrationEnabled`).
 
 ### On-demand reinjection (`chrome.scripting`, `.btn-inject` in the popup)
 
