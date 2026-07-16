@@ -4,10 +4,7 @@
   "version": "2.0.0",
   "description": "Intercepta llamadas mbox/interact de Adobe Target",
   "permissions": ["storage", "tabs", "scripting"],
-  "host_permissions": [
-    "*://*.viabcp.com/*",
-    "*://*.yoando.com.pe/*"
-  ],
+  "host_permissions": ["*://*.viabcp.com/*"],
   "background": {
     "service_worker": "background.js"
   },
@@ -27,19 +24,13 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "*://*.viabcp.com/*",
-        "*://*.yoando.com.pe/*"
-      ],
+      "matches": ["*://*.viabcp.com/*"],
       "js": ["inject.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": [
-        "*://*.viabcp.com/*",
-        "*://*.yoando.com.pe/*"
-      ],
+      "matches": ["*://*.viabcp.com/*"],
       "js": ["content.js"],
       "run_at": "document_start"
     }

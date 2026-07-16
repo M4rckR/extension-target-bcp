@@ -1,4 +1,4 @@
-const ALLOWED_DOMAINS = ["viabcp.com", "yoando.com.pe"];
+const ALLOWED_DOMAINS = ["viabcp.com"];
 const TENANT = "bcp";
 
 // Umbral de truncado del preview de "content" en la pestaña Actividades — se
@@ -27,7 +27,7 @@ function showBlocked() {
     <div class="empty-state">
       <span class="empty-state__icon">🚫</span>
       <p class="empty-state__text">Esta extensión solo funciona en<br>
-      <strong>viabcp.com</strong> y <strong>yoando.com.pe</strong></p>
+      <strong>viabcp.com</strong></p>
     </div>`;
   document.getElementById("count").textContent = "—";
   document.getElementById("page-url").textContent = "Dominio no permitido";

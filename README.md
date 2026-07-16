@@ -22,8 +22,7 @@ También hay un footer con el `orgId`/`edgeConfigId` de la instancia de Alloy ac
 
 La extensión solo se activa en:
 
-- `viabcp.com` (y subdominios)
-- `yoando.com.pe` (y subdominios)
+- `viabcp.com` (y subdominios, p. ej. `mitarjetabcp.viabcp.com`)
 
 En cualquier otra pestaña el popup muestra un aviso de dominio no permitido.
 
@@ -43,7 +42,7 @@ En cualquier otra pestaña el popup muestra un aviso de dominio no permitido.
 
 ## Uso
 
-1. Abre una pestaña en `viabcp.com` o `yoando.com.pe`.
+1. Abre una pestaña en `viabcp.com`.
 2. **Recarga la página** con la extensión activa (importante: la captura ocurre al cargar).
 3. Haz clic en el icono de la barra de herramientas para abrir el popup.
 4. Navega entre las pestañas **Actividades**, **mBoxes** y **Eventos**.
@@ -70,7 +69,7 @@ Esa ventana sigue apuntando a la pestaña que estaba activa cuando la abriste, n
 Cuatro piezas que se comunican en cadena:
 
 ```
-Página web (viabcp.com / yoando.com.pe)
+Página web (viabcp.com)
   │
   ├─ window.__alloyMonitors  ──► inject.js  (world: MAIN, document_start)
   │    Intercepta respuestas de red de Alloy y llamadas a alloy('sendEvent')
@@ -141,7 +140,7 @@ No hay `chrome.action.onClicked` en `background.js` a propósito: esa API nunca 
    ```
 2. En `popup.js`, agrega el dominio al array `ALLOWED_DOMAINS`:
    ```js
-   const ALLOWED_DOMAINS = ["viabcp.com", "yoando.com.pe", "nuevo-dominio.com"];
+   const ALLOWED_DOMAINS = ["viabcp.com", "nuevo-dominio.com"];
    ```
 3. Recarga la extensión en `chrome://extensions/`.
 

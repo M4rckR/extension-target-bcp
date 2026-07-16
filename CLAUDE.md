@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**BCP Target Inspector** — a Chrome extension (Manifest V3) that intercepts Adobe Target / Alloy SDK personalization responses on BCP sites (`viabcp.com`, `yoando.com.pe`) and renders them in the popup: which A/B and XT activities fired, and which mboxes are in use vs. free.
+**BCP Target Inspector** — a Chrome extension (Manifest V3) that intercepts Adobe Target / Alloy SDK personalization responses on `viabcp.com` (and subdomains) and renders them in the popup: which A/B and XT activities fired, and which mboxes are in use vs. free.
 
 There is **no build, no dependencies, and no tests**. It is plain HTML/CSS/JS loaded as an unpacked extension.
 
