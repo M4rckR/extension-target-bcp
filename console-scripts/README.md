@@ -88,29 +88,45 @@ que elegir el renglón **sin indentar** que diga `iframe.html` /
 Si te olvidás, el script no rompe nada: avisa por consola que no encontró
 `.acr-container` y te recuerda cambiar el contexto.
 
-Después pegar el archivo entero. **La ventana de preview se abre sola** —
-`window.open` desde una evaluación de consola cuenta como gesto de usuario, así
-que el bloqueador de popups no la corta.
+Después pegar el archivo entero. **El panel se abre solo**, acoplado a la
+derecha del canvas.
 
-No inyecta ningún panel en la página: todos los controles viven en la ventana de
-preview, para no meter nodos dentro de la superficie de edición del mail.
-
-| Control de la ventana | Para qué |
+| Control del panel | Para qué |
 | --- | --- |
 | **En vivo** | Re-renderiza con cada edición (debounce 400 ms) |
-| Escritorio / Móvil | 700 px / 375 px |
-| Refrescar | Re-renderizar a mano |
-| Copiar HTML | El HTML completo al portapapeles |
-| Descargar .html | Bajarlo como archivo |
+| 700 / 375 | Ancho simulado del mail: escritorio o móvil |
+| Ajustar | Escala el mail para que entre en el panel, en vez de scroll horizontal |
+| ↻ | Re-renderizar a mano |
+| Copiar | El HTML completo al portapapeles |
+| ✕ | Cerrar y cortar la sincronización |
+
+El borde izquierdo del panel se arrastra para ensancharlo o angostarlo.
 
 Desde consola:
 
 ```js
-__accPreview.abrir()      // reabrir o reenfocar la ventana
-__accPreview.refrescar()  // re-renderizar
-__accPreview.estilos()    // tabla: qué CSS se llevó, qué descartó y por qué
-__accPreview.destruir()   // cortar la sincronización y cerrar
+__accPreview.refrescar()      // re-renderizar
+__accPreview.estilos()        // tabla: qué CSS se llevó, qué descartó y por qué
+__accPreview.destruir()       // cortar la sincronización y sacar el panel
+copy(__accPreview.html())     // copiar el HTML del mail al portapapeles
 ```
+
+### Por qué un panel y no una ventana aparte
+
+La primera versión abría una ventana con `window.open`. **No funciona:**
+
+```
+Blocked opening '' in a new window because the request was made in a
+sandboxed frame whose 'allow-popups' permission is not set.
+```
+
+El iframe del canvas está sandboxeado sin `allow-popups`. No es el bloqueador de
+popups ni falta de gesto de usuario: es el atributo `sandbox` del iframe, y no
+hay forma de saltarlo desde el código de la página.
+
+**En extensión sí se va a poder** abrir ventana aparte, con
+`chrome.windows.create` desde el service worker, que no está sujeto al sandbox
+del frame. Es otro punto donde la extensión hace algo que el script no puede.
 
 ### Cómo extrae
 
@@ -170,19 +186,21 @@ estructura. En ACC nada de eso aplica. Quedan solo como registro; **no usarlos**
 
 ## Limitaciones conocidas
 
-- **`acc-email-preview.js` todavía no se probó contra el editor real.** Pasó
-  `node --check` y está construido sobre tres reconocimientos hechos en vivo,
-  pero el render de la preview en sí no se vio funcionar nunca.
-- **CSP de Adobe.** La preview se arma en una ventana `about:blank`, que hereda
-  la CSP de la página que la abrió. Si Adobe restringe estilos inline, el mail
-  podría verse sin estilos — para eso está **Descargar .html**, que abierto
-  desde el disco no tiene CSP encima. Sin probar todavía.
-- **Bloqueador de popups.** La ventana se abre desde la evaluación de consola,
-  que cuenta como gesto de usuario. Si igual se bloqueara, queda
-  `__accPreview.abrir()`.
+- **El render de la preview todavía no se vio funcionar.** De lo que hay,
+  corrieron en vivo los tres `recon` y la detección de `.acr-container` (el
+  script imprime "Activo" solo si la encuentra). El panel y el render en sí
+  pasaron `node --check` y nada más.
+- **El frame está sandboxeado**, y eso puede afectar más cosas además de
+  `window.open`: la Clipboard API puede estar bloqueada (hay fallback a
+  `execCommand`, y si tampoco va queda `copy(__accPreview.html())` desde la
+  consola) y las descargas de archivo probablemente también, por eso no hay
+  botón de descargar.
+- **El mail se renderiza en un `<iframe srcdoc>` dentro del frame sandboxeado**,
+  así que hereda su sandbox. Para HTML y CSS estáticos no es problema, pero si
+  el mail dependiera de algo más podría verse distinto.
 - **Imágenes con ruta relativa.** Se agrega un `<base href>` apuntando al
   documento del canvas para que sigan resolviendo, pero si el editor las sirve
-  desde un origen con restricciones de referrer podrían no cargar en la preview.
+  desde un origen con restricciones de referrer podrían no cargar.
 - El HTML extraído es **lo que renderiza el editor**, no lo que Adobe envía al
   final: los tokens de personalización vienen resueltos o vacíos, y no incluye
   lo que agregue el servidor al enviar.
