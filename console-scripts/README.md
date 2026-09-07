@@ -29,13 +29,16 @@ ventana con la previsualización**, que se actualiza sola mientras se edita.
 
 | Archivo | Qué es | Cuándo se usa |
 | --- | --- | --- |
-| `recon.js` | Reconocimiento del DOM, solo lectura | **Paso 1** — ubicar el canvas |
-| `recon-fragmentos.js` | Segundo reconocimiento: contenedor y estilos | **Paso 2** — ya dentro del canvas |
-| `ajo-email-preview.js` | La funcionalidad: preview en otra ventana | Paso 3 — cuando se sepa dónde extraer |
-| `banco-de-pruebas.html` | Maqueta local que imita un editor | Para probar sin acceso a Adobe |
+| **`acc-email-preview.js`** | **La funcionalidad: preview del mail en otra ventana** | **Es el que se usa** |
+| `recon.js` | Reconocimiento del DOM, solo lectura | Ya cumplió — ubicó el canvas |
+| `recon-fragmentos.js` | Contenedor del mail y origen de los estilos | Ya cumplió |
+| `recon-estilos.js` | Cuál de los `<style>` es del mail | Ya cumplió |
+| `ajo-email-preview.js` | ~~Preview~~ — **obsoleto**, apuntaba a Journey Optimizer | No usar |
+| `banco-de-pruebas.html` | Maqueta local del editor equivocado | Solo servía al obsoleto |
 
-Los `result-recon*.txt` son salidas reales guardadas a mano; no los genera
-ningún script.
+Los tres `recon*.js` quedan versionados porque sirven para rehacer el
+diagnóstico si Adobe cambia el editor en un release. Los `result-*.txt` son
+salidas reales guardadas a mano; no los genera ningún script.
 
 ---
 
@@ -73,73 +76,80 @@ a mano, en extensión es automático.
 
 ---
 
-## Orden de uso
+## Cómo se usa (`acc-email-preview.js`)
 
-### Paso 1 — Ubicar el canvas (`recon.js`)
-
-Con el mail abierto en el editor, pegar en la consola y después `copy(__recon)`.
-
-Devuelve el inventario de iframes (id, clase, título, tamaño, si son legibles o
-cross-origin, cuántas tablas e imágenes tienen), los contenedores
-`contenteditable` y los custom elements.
-
-### Paso 2 — Ubicar el contenedor y los estilos (`recon-fragmentos.js`)
-
-**Antes de pegarlo hay que cambiar el contexto de la consola.** El desplegable
-está en la segunda fila de la Console, a la izquierda del buscador *Filter*, y
-según la versión de Chrome dice `top` o `Main Content (...)`. Hay que elegir el
-renglón **sin indentar** que diga `iframe.html` /
+**Paso obligatorio antes de pegar: cambiar el contexto de la consola.** El
+desplegable está en la segunda fila de la Console, a la izquierda del buscador
+*Filter*, y según la versión de Chrome dice `top` o `Main Content (...)`. Hay
+que elegir el renglón **sin indentar** que diga `iframe.html` /
 `acrites-ui-iframe.experience.adobe.net` — los renglones indentados que dicen
 "Extension" son mundos aislados de otras extensiones, no sirven.
 
-Después pegar y `copy(__recon3)`. Contesta las dos preguntas que definen si la
-preview es viable:
+Si te olvidás, el script no rompe nada: avisa por consola que no encontró
+`.acr-container` y te recuerda cambiar el contexto.
 
-1. **¿Cuál es el contenedor** que envuelve a los 17 fragmentos? Es lo que hay
-   que clonar; los fragmentos sueltos no alcanzan.
-2. **¿Los estilos son inline o del editor?** Si el mail trae sus estilos en
-   atributos `style`, la preview sale fiel. Si dependen de la hoja CSS del
-   editor, al sacar el HTML afuera se ve sin estilos y hay que buscar el HTML
-   fuente en otro lado — por eso también revisa textareas e inputs ocultos
-   grandes, donde las apps suelen guardar el HTML crudo.
+Después pegar el archivo entero. **La ventana de preview se abre sola** —
+`window.open` desde una evaluación de consola cuenta como gesto de usuario, así
+que el bloqueador de popups no la corta.
 
-### Paso 3 — La preview (`ajo-email-preview.js`)
+No inyecta ningún panel en la página: todos los controles viven en la ventana de
+preview, para no meter nodos dentro de la superficie de edición del mail.
 
-Pegar en la consola con el mail abierto. Aparece un panel abajo a la derecha.
-
-| Control del panel | Para qué |
+| Control de la ventana | Para qué |
 | --- | --- |
-| Estado (verde/rojo) | Si detectó el canvas y con qué puntaje |
-| Desplegable | Elegir otro candidato a mano si eligió mal |
-| **Abrir preview** | Abre la ventana con el mailing |
-| Re-escanear | Volver a buscar (si cambiaste de mail sin recargar) |
-| Diagnóstico | Vuelca a consola todo lo que encontró |
-| Sincronizar mientras edito | Refresca con cada edición (debounce 400 ms) |
-
-En la ventana de preview: **Escritorio / Móvil** (700 px / 375 px),
-**Refrescar**, **Copiar HTML** y **Descargar .html**.
+| **En vivo** | Re-renderiza con cada edición (debounce 400 ms) |
+| Escritorio / Móvil | 700 px / 375 px |
+| Refrescar | Re-renderizar a mano |
+| Copiar HTML | El HTML completo al portapapeles |
+| Descargar .html | Bajarlo como archivo |
 
 Desde consola:
 
 ```js
-__ajoEmailPreview.diagnostico()  // qué vio y por qué eligió lo que eligió
-__ajoEmailPreview.escanear()     // re-detectar
-__ajoEmailPreview.refrescar()    // re-renderizar
-__ajoEmailPreview.destruir()     // sacar todo de la página
+__accPreview.abrir()      // reabrir o reenfocar la ventana
+__accPreview.refrescar()  // re-renderizar
+__accPreview.estilos()    // tabla: qué CSS se llevó, qué descartó y por qué
+__accPreview.destruir()   // cortar la sincronización y cerrar
 ```
 
-> ⚠️ **Este script todavía apunta al editor equivocado.** Fue escrito antes de
-> los reconocimientos, asumiendo Journey Optimizer con el canvas en un iframe
-> legible: busca iframes y los puntúa por heurística. En ACC el canvas no es un
-> iframe sino los fragmentos de este documento, así que **no va a detectar
-> nada**. Queda tal cual a propósito, para reescribir la detección de una sola
-> vez cuando estén los resultados del paso 2.
+### Cómo extrae
+
+```
+document.querySelector('.acr-container')   → el HTML del mail
+  + los <style> que pasan el filtro        → el responsive
+  − contenteditable, spellcheck, <script>  → marcas de edición
+```
+
+La limpieza es mínima a propósito: **no toca clases ni ids**, porque el CSS que
+sí se lleva los referencia — el bloque de media queries por id (`#acr-t94e`…)
+dejaría de aplicar si se borraran. Las clases `acr-*` que quedan son inocuas,
+porque la hoja que las estilaba es justamente una de las descartadas.
+
+### Cómo separa el CSS del mail del CSS del editor
+
+El documento del canvas mezcla los dos. Los del editor se delatan por dos
+rasgos, y cualquiera de los dos alcanza para descartarlos:
+
+1. Selectores `.acr-*` / `.acd-*` — canvas, grid, dark mode, plugins.
+2. Nombres de CSS Modules con hash (`colorPicker__wrapper___3urhm`) — los
+   paneles de la UI.
+
+De lo que queda se conserva lo que defina al menos dos clases que el mail usa de
+verdad, o lo que traiga `@media` (por ahí entra el responsive por id, que no
+define clases pero sí afecta al mail). Se deduplica por contenido exacto: el
+editor emite el bloque responsive dos veces, idéntico byte a byte.
+
+Medido en vivo, de 20 `<style>` se lleva 5 (~10 KB): el reset de clientes de
+correo (`.ReadMsgBody`, `.ExternalClass`, `.yshortcuts`), dos bloques
+`mobile-*`, uno de `.structure__table`/`.colspan1` y el de media queries por id.
+Las 13 hojas externas son todas del editor (`acd-plugin-*`, `appIframe`) y no
+van. `__accPreview.estilos()` muestra la clasificación completa.
 
 ---
 
 ## Privacidad
 
-Los dos `recon` reportan **estructura, no contenido**: borran los nodos de texto
+Los tres `recon` reportan **estructura, no contenido**: borran los nodos de texto
 y todos los atributos salvo `class` e `id`, cuentan atributos `style` sin leer
 sus valores, de las hojas de estilo reportan largo y URL pero no el CSS, de los
 campos de texto solo el largo, y a los `src` les cortan el query string. No
@@ -149,30 +159,30 @@ Aun así conviene revisar el output antes de compartirlo: **el repo es público*
 
 ---
 
-## Probar sin acceso a Adobe
+## Lo obsoleto
 
-`banco-de-pruebas.html` es una maqueta local que imita un editor: canvas en un
-iframe, dentro de un shadow root, rodeado de otros iframes que compiten. Se abre
-en el navegador y se le pega el script encima. No pide nada a la red (la imagen
-es un `data:` URI), así que anda en una máquina con todo bloqueado.
-
-**No es Adobe, y encima imita la estructura equivocada** — la escribí asumiendo
-Journey Optimizer. Sirve para validar mecánica general (traversal, render en la
-ventana, sincronización), no el caso real de ACC.
+`ajo-email-preview.js` y `banco-de-pruebas.html` se escribieron **antes** de los
+reconocimientos, asumiendo Journey Optimizer con el canvas en un iframe legible:
+el script busca iframes y los puntúa por heurística, y la maqueta imita esa
+estructura. En ACC nada de eso aplica. Quedan solo como registro; **no usarlos**.
 
 ---
 
 ## Limitaciones conocidas
 
-- **Nada está verificado contra el editor real todavía.** Los scripts pasaron
-  `node --check`; los `recon` además corrieron en vivo, `ajo-email-preview.js`
-  no.
+- **`acc-email-preview.js` todavía no se probó contra el editor real.** Pasó
+  `node --check` y está construido sobre tres reconocimientos hechos en vivo,
+  pero el render de la preview en sí no se vio funcionar nunca.
 - **CSP de Adobe.** La preview se arma en una ventana `about:blank`, que hereda
   la CSP de la página que la abrió. Si Adobe restringe estilos inline, el mail
   podría verse sin estilos — para eso está **Descargar .html**, que abierto
   desde el disco no tiene CSP encima. Sin probar todavía.
-- **Bloqueador de popups.** La ventana se abre desde un click del panel, así que
-  hay gesto de usuario y no debería bloquearse. Si igual pasa, el panel avisa.
-- El HTML extraído sería **lo que renderiza el editor**, no lo que Adobe envía
-  al final: los tokens de personalización vienen resueltos o vacíos, y no
-  incluye lo que agregue el servidor al enviar.
+- **Bloqueador de popups.** La ventana se abre desde la evaluación de consola,
+  que cuenta como gesto de usuario. Si igual se bloqueara, queda
+  `__accPreview.abrir()`.
+- **Imágenes con ruta relativa.** Se agrega un `<base href>` apuntando al
+  documento del canvas para que sigan resolviendo, pero si el editor las sirve
+  desde un origen con restricciones de referrer podrían no cargar en la preview.
+- El HTML extraído es **lo que renderiza el editor**, no lo que Adobe envía al
+  final: los tokens de personalización vienen resueltos o vacíos, y no incluye
+  lo que agregue el servidor al enviar.
