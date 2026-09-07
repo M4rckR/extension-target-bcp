@@ -164,6 +164,34 @@ Consecuencias probables del mismo sandbox, no verificadas una por una:
 
 ---
 
+## 5 bis. La CSP decide dónde puede vivir la preview
+
+Verificado el 2026-09-07 por eliminación, con el mismo HTML extraído en los tres
+casos:
+
+| Dónde se renderiza | CSP que hereda | ¿Cargan las imágenes? |
+| --- | --- | --- |
+| **Panel dentro del canvas** | la de `acrites-ui-iframe…` | ✅ |
+| Pestaña aparte abierta desde `top` | la de `experience.adobe.com` | ❌ rotas |
+| Archivo `.html` bajado y abierto del disco | ninguna | ✅ |
+
+**La CSP de `experience.adobe.com` restringe `img-src`.** Una pestaña abierta con
+`window.open` hereda la política del documento que la abrió, y el `<iframe
+srcdoc>` de adentro también — así que las imágenes del mail quedan bloqueadas
+aunque las URLs sean correctas (se comprueba abriéndolas sueltas: cargan bien).
+
+El canvas tiene una política más permisiva, lógico: el editor tiene que poder
+mostrar esas mismas imágenes. Por eso el panel funciona.
+
+Se descartó que fuera protección anti-hotlinking por `Referer`: se agregó
+`<meta name="referrer" content="no-referrer">` y `referrerpolicy="no-referrer"`
+y no cambió nada en la pestaña. Se dejaron igual porque no molestan y cubren
+ese caso si aparece en otro entorno.
+
+**Conclusión operativa: por consola, la preview tiene que renderizarse dentro
+del canvas.** La pestaña aparte funciona para el HTML y el CSS pero pierde las
+imágenes; sirve como demo secundaria o con el botón de descargar.
+
 ## 6. Qué significa esto para la extensión
 
 Los dos obstáculos que frenan al script de consola **no existen en una
@@ -173,6 +201,7 @@ extensión**. Sirven como argumento concreto en el pedido de aprobación:
 | --- | --- | --- |
 | Canvas cross-origin | Hay que cambiar el contexto de DevTools a mano | Content script con `all_frames: true` se inyecta solo |
 | `window.open` bloqueado por sandbox | Imposible — solo panel acoplado | `chrome.windows.create` desde el service worker, ajeno al sandbox del frame |
+| CSP bloquea las imágenes fuera del canvas | La preview tiene que quedarse adentro del canvas | La preview vive en una página `chrome-extension://` con CSP propia, que nosotros definimos |
 
 Cambios de manifiesto que haría falta cuando se porte:
 
@@ -200,24 +229,29 @@ Automation 360. Hay precedente de aprobación para herramientas de Adobe.
 
 - Los tres reconocimientos (`recon.js`, `recon-fragmentos.js`,
   `recon-estilos.js`) — todos los datos de este documento salen de ahí.
-- Que `.acr-container` se detecta correctamente desde el script de preview: el
-  log imprime "Activo" solo si la encuentra.
-- Que `window.open` está bloqueado por el sandbox.
+- Que `window.open` está bloqueado por el sandbox del canvas.
+- **Que `acc-email-preview.js` funciona: el panel muestra el mail completo, con
+  estilos y con imágenes.** Es la vía recomendada.
+- Que `acc-preview-pestana.js` funciona en cuanto al puente `postMessage` y
+  renderiza el mail, pero **sin imágenes**, por la CSP de `experience.adobe.com`
+  (sección 5 bis).
+- Que el HTML bajado con **Descargar .html** se ve completo, con imágenes,
+  abierto desde el disco.
 
 ### Sin verificar
 
-- **Que el mail se vea bien en el panel.** El render nunca se llegó a ver
-  funcionar: la primera corrida murió en `window.open`, y la segunda reusó por
-  error la instancia vieja (bug del guard, ya corregido).
-- Si el portapapeles funciona dentro del sandbox.
-- Si las imágenes con ruta relativa resuelven bien con el `<base href>`.
+- Si el portapapeles funciona dentro del sandbox (hay fallback a `execCommand` y
+  a `copy(__accPreview.html())`).
+- Si la sincronización en vivo aguanta bien una sesión larga de edición.
+- Si `.acr-container` sigue siendo el selector correcto en otros tipos de
+  delivery (solo se probó con los mails que estaban a mano).
 
 ### Lo que sigue
 
-1. Correr `acc-email-preview.js` y ver si el mail se renderiza bien.
-2. Si sale sin estilos o le faltan bloques → `__accPreview.estilos()` y revisar
-   la clasificación de la sección 4.
-3. Con eso andando, portarlo a una pestaña del popup de la extensión.
+1. Usar el panel para la demo y el pedido de aprobación.
+2. Portarlo a una pestaña del popup de la extensión. Ahí la preview pasa a una
+   página `chrome-extension://` con CSP propia, así que puede salir a ventana
+   aparte sin perder las imágenes.
 
 ---
 

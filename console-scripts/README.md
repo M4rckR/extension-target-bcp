@@ -33,8 +33,8 @@ retomás esto después de un tiempo.
 
 | Archivo | Qué es | Cuándo se usa |
 | --- | --- | --- |
-| **`acc-preview-pestana.js`** | **Preview en una pestaña aparte** | Para demos — se pega 2 veces |
-| **`acc-email-preview.js`** | **Preview en un panel dentro del canvas** | Un solo pegado, más simple |
+| **`acc-email-preview.js`** | **Preview en un panel dentro del canvas** | ✅ **El que funciona** — 1 pegado |
+| `acc-preview-pestana.js` | Preview en una pestaña aparte | Anda, pero **sin imágenes** (CSP) |
 | `recon.js` | Reconocimiento del DOM, solo lectura | Ya cumplió — ubicó el canvas |
 | `recon-fragmentos.js` | Contenedor del mail y origen de los estilos | Ya cumplió |
 | `recon-estilos.js` | Cuál de los `<style>` es del mail | Ya cumplió |
@@ -124,8 +124,13 @@ copy(__accPreview.html())     // copiar el HTML del mail al portapapeles
 
 ## Preview en una pestaña aparte (`acc-preview-pestana.js`)
 
-Para demos, cuando hace falta mostrar el mail en una pestaña propia y no en un
-panel al costado.
+> ⚠️ **Anda, pero pierde las imágenes.** La pestaña hereda la CSP de
+> `experience.adobe.com`, que restringe `img-src`, así que el mail se ve con
+> texto y estilos pero con las imágenes rotas — aunque las URLs sean correctas.
+> Verificado en vivo; ver la sección 5 bis de [HALLAZGOS.md](HALLAZGOS.md).
+> Para demos usá el panel. Esto queda como registro del puente `postMessage`,
+> que sí funciona, y porque el botón **Descargar .html** de la pestaña sí baja
+> el mail completo con imágenes.
 
 ### Por qué se pega dos veces
 
