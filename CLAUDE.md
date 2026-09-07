@@ -157,6 +157,31 @@ Cross-references the DOM set (`domMboxes`) against the responded set (scopes Tar
 
 **Every public page tested on viabcp.com so far is 100% VEC** (`__view__`, zero `[data-mbox]` elements) — checked the home page and `/promociones/abre-tu-cuenta`. `renderMboxes()` deliberately excludes `__view__` from the classification above, so on those pages `allMboxes` is always empty even though `requests` has real activities. `renderMboxes()` distinguishes the two empty cases instead of showing one generic "recargá" message for both: `requests.length === 0` ("Sin datos aún, recargá") vs. `requests.length > 0` but nothing fit the mbox classification ("esta página no usa mboxes nombrados — todo corre por VEC, mirá Actividades"). The tab is being kept for now specifically because authenticated/transactional flows (Banca por Internet) weren't tested and are a plausible place for named mbox targeting — if it turns out to always be empty in practice, removing `renderMboxes`/`domMboxes`/the DOM scan in `inject.js`/the panel is a deliberate separate follow-up, not bundled with unrelated changes.
 
+## `console-scripts/` — prototipos pegables en consola (rama experimental)
+
+Carpeta aparte, **no forma parte de la extensión**. Vive en la rama
+`experimental/adobe-email-designer` y no está integrada a `manifest.json` ni a
+ningún script de arriba.
+
+Existe porque en las laptops del banco donde está Adobe no se pueden instalar
+extensiones, pero sí ejecutar JS en la consola. Cada feature nueva se prototipa
+ahí como script pegable; con la demo andando se pide la aprobación de la
+extensión, y recién después se porta a una pestaña del popup. Los scripts no
+usan APIs `chrome.*` — son JS de página, igual que `inject.js` en el mundo MAIN,
+y por eso son portables en las dos direcciones.
+
+Trabajo en curso: **preview del mailing del editor de Adobe Campaign Classic**
+(detectar el mail que se está editando y mostrarlo renderizado al lado).
+
+👉 **`console-scripts/HALLAZGOS.md`** tiene la bitácora técnica completa: qué
+producto es, la cadena de cuatro frames en tres dominios, dónde vive el HTML del
+mail (`div.acr-container`), cómo separar el CSS del mail del CSS del editor, y
+las restricciones del sandbox del canvas. Todo medido en vivo. **Leerlo antes de
+tocar nada de esa carpeta** — casi todo ahí es contraintuitivo y costó tres
+rondas de reconocimiento averiguarlo.
+
+`console-scripts/README.md` documenta cómo se usa cada script.
+
 ## Gotchas
 
 - `popup.js` hard-codes DOM IDs/classes it expects from `popup.html`: `#list`, `#count`, `#page-url`, `#ts`, `#mbox-list`, `#clear`, `.stat-*`, `.tabs__item[data-tab]`, `.panel`, `.url-bar__indicator`. Renaming in the HTML silently breaks rendering.

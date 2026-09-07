@@ -27,9 +27,13 @@ ventana con la previsualización**, que se actualiza sola mientras se edita.
 
 ## Qué hay acá
 
+📄 **[HALLAZGOS.md](HALLAZGOS.md)** — bitácora técnica de todo lo que se
+averiguó del editor de ACC, con los datos medidos en vivo. Empezá por ahí si
+retomás esto después de un tiempo.
+
 | Archivo | Qué es | Cuándo se usa |
 | --- | --- | --- |
-| **`acc-email-preview.js`** | **La funcionalidad: preview del mail en otra ventana** | **Es el que se usa** |
+| **`acc-email-preview.js`** | **La funcionalidad: preview del mail en un panel** | **Es el que se usa** |
 | `recon.js` | Reconocimiento del DOM, solo lectura | Ya cumplió — ubicó el canvas |
 | `recon-fragmentos.js` | Contenedor del mail y origen de los estilos | Ya cumplió |
 | `recon-estilos.js` | Cuál de los `<style>` es del mail | Ya cumplió |
