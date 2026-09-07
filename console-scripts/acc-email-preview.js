@@ -38,11 +38,20 @@
 
   const NS = "__accPreview";
 
-  // ── 0. Guard de idempotencia ───────────────────────────────────────────────
+  // ── 0. Reemplazo de la instancia previa ────────────────────────────────────
+  // Si ya hay una corriendo, se desmonta y este pegado la reemplaza. Antes el
+  // guard reusaba la instancia vieja llamando a su abrir(), lo cual hacía que
+  // pegar una versión corregida del script no tuviera ningún efecto: seguía
+  // ejecutándose el código anterior. Desmontar y arrancar de cero también evita
+  // duplicar el MutationObserver y el panel.
   if (window[NS]) {
-    window[NS].abrir();
-    console.log("[ACC Preview] Ya estaba activo — panel reabierto.");
-    return;
+    try {
+      window[NS].destruir();
+    } catch (e) {
+      // instancia vieja rota o de una versión sin destruir() — se descarta igual
+      delete window[NS];
+    }
+    console.log("[ACC Preview] Se desmontó la instancia anterior.");
   }
 
   const SEL_CONTENEDOR = ".acr-container";

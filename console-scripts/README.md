@@ -91,6 +91,10 @@ Si te olvidás, el script no rompe nada: avisa por consola que no encontró
 Después pegar el archivo entero. **El panel se abre solo**, acoplado a la
 derecha del canvas.
 
+Volver a pegar el script **reemplaza** la instancia anterior: se desmonta sola.
+No hace falta recargar la página ni llamar a `destruir()` a mano para probar una
+versión nueva.
+
 | Control del panel | Para qué |
 | --- | --- |
 | **En vivo** | Re-renderiza con cada edición (debounce 400 ms) |
