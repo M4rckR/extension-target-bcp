@@ -35,6 +35,8 @@ retomás esto después de un tiempo.
 | --- | --- | --- |
 | **`acc-email-preview.js`** | Preview en un panel dentro del canvas | ✅ 1 pegado, lo más simple |
 | **`acc-preview-pestana.js`** | Preview en una pestaña aparte | ✅ 2 pegados, ojo con qué frame |
+
+Las dos traen el selector de escenarios para el contenido condicional.
 | `recon.js` | Reconocimiento del DOM, solo lectura | Ya cumplió — ubicó el canvas |
 | `recon-fragmentos.js` | Contenedor del mail y origen de los estilos | Ya cumplió |
 | `recon-estilos.js` | Cuál de los `<style>` es del mail | Ya cumplió |
@@ -167,7 +169,10 @@ Pegar **el mismo archivo** en los dos, cambiando solo el desplegable. Si se hace
 al revés igual funciona: el receptor pide los datos al arrancar y reintenta cada
 3 segundos.
 
-En la pestaña: **Escritorio / Móvil** y **Descargar .html**.
+En la pestaña: **Escritorio / Móvil**, **Descargar .html** y los selectores de
+contenido condicional (los mismos que el panel — ver abajo). El archivo que baja
+**Descargar** es el escenario que estás viendo, no el mail con todas las ramas
+apiladas.
 
 ```js
 __accTab.abrir()      // receptor: reabrir la pestaña si la cerraste

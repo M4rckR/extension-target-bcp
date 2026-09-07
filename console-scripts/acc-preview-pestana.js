@@ -44,6 +44,15 @@
  * nunca con `'*'`, y solo si ese origen es un dominio de Adobe. El receptor
  * descarta cualquier mensaje que no venga del origen del canvas.
  *
+ * CONTENIDO CONDICIONAL
+ * El mail tiene bloques que cambian según variables del perfil. El emisor manda
+ * el mail ENTERO, con todas las ramas, y el filtrado se hace del lado de la
+ * pestaña, que es donde está la interfaz: así no hace falta un canal de vuelta
+ * para avisarle al canvas qué escenario se eligió. En la barra de la pestaña
+ * aparece un control por variable de condición (elegir CODSUBSEGMENTO = M1N
+ * resuelve header, footer y todo lo que dependa de ella) y uno por bloque para
+ * forzar una rama a mano.
+ *
  * API:
  *   window.__accTab.abrir()     receptor: reabre la pestaña
  *   window.__accTab.enviar()    emisor: manda el HTML ahora
@@ -229,6 +238,8 @@
       ultimoHtml: null,
       timerPedido: null,
       origen: location.origin,
+      escenario: {},   // variable de condición -> valor elegido
+      manual: {},      // grupo -> id de variante forzada, o '__todas__'
     };
 
     const SHELL = `<head>
@@ -245,6 +256,13 @@
   .barra button:hover { background:#64748b; }
   .barra button[data-activo="si"] { background:#4f46e5; }
   .barra__e { font-size:11px; opacity:.75; }
+  .vars { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:7px 12px;
+          background:#eef2ff; border-bottom:1px solid #c7d2fe; flex:none; }
+  .vars:empty { display:none; }
+  .vars__g { display:flex; align-items:center; gap:5px; }
+  .vars__g label { font-size:11px; color:#4338ca; font-weight:600; }
+  .vars__g select { font:inherit; font-size:11px; padding:3px 5px; border:1px solid #c7d2fe;
+                    border-radius:4px; background:#fff; color:#1e293b; }
   .lienzo { flex:1; overflow:auto; display:flex; justify-content:center; padding:16px; }
   iframe { background:#fff; border:1px solid #cbd5e1; border-radius:4px; height:100%; }
   .espera { margin:auto; color:#64748b; font-size:13px; text-align:center; }
@@ -259,6 +277,7 @@
     <button id="movil">Móvil</button>
     <button id="descargar">Descargar .html</button>
   </div>
+  <div class="vars" id="vars"></div>
   <div class="lienzo"><iframe id="vista" width="700" referrerpolicy="no-referrer"></iframe></div>
 </body>`;
 
@@ -281,8 +300,9 @@
       $("escritorio").onclick = () => fijarAncho(700);
       $("movil").onclick = () => fijarAncho(375);
       $("descargar").onclick = () => {
-        if (!estado.ultimoHtml) return;
-        const url = URL.createObjectURL(new Blob([estado.ultimoHtml], { type: "text/html" }));
+        const r = htmlPodado();
+        if (!r) return;
+        const url = URL.createObjectURL(new Blob([r.html], { type: "text/html" }));
         const a = t.document.createElement("a");
         a.href = url;
         a.download = "mailing-preview.html";
@@ -290,7 +310,7 @@
         setTimeout(() => URL.revokeObjectURL(url), 5000);
       };
 
-      if (estado.ultimoHtml) pintar(estado.ultimoHtml);
+      if (estado.ultimoHtml) render();
       return true;
     }
 
@@ -301,6 +321,188 @@
       t.document.getElementById("vista").width = px;
       t.document.getElementById("escritorio").dataset.activo = px === 700 ? "si" : "no";
       t.document.getElementById("movil").dataset.activo = px === 375 ? "si" : "no";
+    }
+
+    // ── Contenido condicional ───────────────────────────────────────────────
+    // El emisor manda el mail ENTERO, con todas las ramas: el filtrado se hace
+    // acá, del lado de la pestaña, que es donde está la interfaz. Así no hace
+    // falta un canal de vuelta para avisarle al canvas qué escenario se eligió.
+    // La lógica es la misma que la de acc-email-preview.js, pero aplicada sobre
+    // un documento parseado en vez de sobre el DOM vivo.
+    const RE_COMPARACION = /([A-Za-z_$][\w.$]*)\s*(===?|!==?)\s*['"]([^'"]*)['"]/g;
+
+    const parsearCond = (cond) => {
+      const partes = [];
+      RE_COMPARACION.lastIndex = 0;
+      let m;
+      while ((m = RE_COMPARACION.exec(cond))) {
+        partes.push({ variable: m[1], negado: m[2][0] === "!", valor: m[3] });
+      }
+      return { partes, evaluable: partes.length > 0 && !/\|\||&&|\bor\b|\band\b/i.test(cond) };
+    };
+
+    const leerVariantes = (doc) =>
+      [...doc.querySelectorAll(".acr-dc-variant")].map((el) => ({
+        id: el.getAttribute("acr-dc-variant-id") || "",
+        grupo: el.getAttribute("acr-dc-variant-group") || "",
+        indice: Number(el.getAttribute("acr-dc-variant-index") || 0),
+        etiqueta: el.getAttribute("acr-dc-variant-label") || "(sin nombre)",
+        cond: el.getAttribute("acr-dc-cond") || "",
+      }));
+
+    function agrupar(vs) {
+      const g = new Map();
+      for (const v of vs) {
+        if (!g.has(v.grupo)) g.set(v.grupo, []);
+        g.get(v.grupo).push(v);
+      }
+      for (const arr of g.values()) arr.sort((a, b) => a.indice - b.indice);
+      return g;
+    }
+
+    const aplica = (v) => {
+      const { partes, evaluable } = parsearCond(v.cond);
+      if (!evaluable) return false;
+      return partes.every((p) => {
+        const actual = estado.escenario[p.variable];
+        if (actual === undefined) return false;
+        return p.negado ? actual !== p.valor : actual === p.valor;
+      });
+    };
+
+    /** Qué variante queda de cada grupo: manual > condición > sin condición > ninguna. */
+    function elegidas(vs) {
+      const sel = new Map();
+      for (const [grupo, arr] of agrupar(vs)) {
+        const manual = estado.manual[grupo];
+        if (manual) sel.set(grupo, manual);
+        else {
+          const match = arr.find(aplica) || arr.find((v) => !v.cond.trim());
+          sel.set(grupo, match ? match.id : null);
+        }
+      }
+      return sel;
+    }
+
+    /**
+     * Nombre legible de un valor, deducido de las etiquetas: el editor las
+     * escribe como "Header - Consumo", así que el tramo tras el guion nombra el
+     * escenario. Se deduce del mail en vez de hardcodearlo.
+     */
+    function nombreDeValor(vs, variable, valor) {
+      const nombres = new Set();
+      for (const v of vs) {
+        const coincide = parsearCond(v.cond).partes.some(
+          (p) => p.variable === variable && !p.negado && p.valor === valor
+        );
+        if (!coincide) continue;
+        const partes = v.etiqueta.split(" - ");
+        if (partes.length > 1) nombres.add(partes.slice(1).join(" - ").trim());
+      }
+      return nombres.size === 1 ? " · " + [...nombres][0] : "";
+    }
+
+    /** Dibuja los selectores en la barra de la pestaña. */
+    function pintarVars(vs) {
+      const t = estado.pestana;
+      if (!t || t.closed) return;
+      const caja = t.document.getElementById("vars");
+      if (!caja) return;
+      caja.textContent = "";
+      if (!vs.length) return;
+
+      const gs = agrupar(vs);
+      const sel = elegidas(vs);
+
+      const control = (etiqueta, tip) => {
+        const d = t.document.createElement("div");
+        d.className = "vars__g";
+        const l = t.document.createElement("label");
+        l.textContent = etiqueta;
+        if (tip) l.title = tip;
+        const s = t.document.createElement("select");
+        d.appendChild(l);
+        d.appendChild(s);
+        caja.appendChild(d);
+        return s;
+      };
+      const opcion = (s, valor, texto, elegido) => {
+        const o = t.document.createElement("option");
+        o.value = valor;
+        o.textContent = texto;
+        if (elegido) o.selected = true;
+        s.appendChild(o);
+      };
+
+      // Escenario: un control por variable de condición.
+      const vars = new Map();
+      for (const v of vs) {
+        for (const p of parsearCond(v.cond).partes) {
+          if (!vars.has(p.variable)) vars.set(p.variable, new Set());
+          vars.get(p.variable).add(p.valor);
+        }
+      }
+      for (const [variable, valores] of vars) {
+        const s = control(variable.split(".").pop(), variable);
+        opcion(s, "", "(sin definir)", !estado.escenario[variable]);
+        for (const val of [...valores].sort()) {
+          opcion(s, val, val + nombreDeValor(vs, variable, val), estado.escenario[variable] === val);
+        }
+        s.onchange = (e) => {
+          if (e.target.value) estado.escenario[variable] = e.target.value;
+          else delete estado.escenario[variable];
+          estado.manual = {}; // el escenario manda: si no, lo manual lo taparía
+          render();
+        };
+      }
+
+      // Bloques: forzar una rama a mano.
+      for (const [grupo, arr] of gs) {
+        const activa = sel.get(grupo);
+        const s = control(
+          (arr[0].etiqueta || "Bloque").split(" - ")[0],
+          arr.map((v) => v.etiqueta + (v.cond ? " · " + v.cond : "")).join("\n")
+        );
+        const elegida = arr.find((v) => v.id === activa);
+        opcion(s, "", "auto → " + (elegida ? elegida.etiqueta : "ninguna"), !estado.manual[grupo]);
+        for (const v of arr) opcion(s, v.id, v.etiqueta, estado.manual[grupo] === v.id);
+        opcion(s, "__todas__", "todas", estado.manual[grupo] === "__todas__");
+        opcion(s, "__ninguna__", "ocultar", estado.manual[grupo] === "__ninguna__");
+        s.onchange = (e) => {
+          if (!e.target.value) delete estado.manual[grupo];
+          else estado.manual[grupo] = e.target.value;
+          render();
+        };
+      }
+    }
+
+    /**
+     * El HTML tal como quedaría en el mail real: una sola rama por grupo.
+     * Lo usa tanto el render como el botón de descargar, para que el archivo
+     * bajado sea el escenario que se está viendo y no el mail con todo apilado.
+     */
+    function htmlPodado() {
+      if (!estado.ultimoHtml) return null;
+      const doc = new DOMParser().parseFromString(estado.ultimoHtml, "text/html");
+      const vs = leerVariantes(doc);
+
+      if (vs.length) {
+        const sel = elegidas(vs);
+        for (const el of doc.querySelectorAll(".acr-dc-variant")) {
+          const grupo = el.getAttribute("acr-dc-variant-group") || "";
+          const elegida = sel.get(grupo);
+          if (elegida === "__todas__") continue;
+          if (el.getAttribute("acr-dc-variant-id") !== elegida) el.remove();
+        }
+      }
+      return { html: "<!DOCTYPE html>\n" + doc.documentElement.outerHTML, variantes: vs };
+    }
+
+    function render() {
+      const r = htmlPodado();
+      if (!r) return;
+      pintarVars(r.variantes);
+      pintar(r.html);
     }
 
     function pintar(html) {
@@ -353,7 +555,7 @@
       estado.recibidos++;
       estado.ultimoHtml = d.html;
       clearInterval(estado.timerPedido);
-      pintar(d.html);
+      render();
     };
     window.addEventListener("message", onMensaje);
 
