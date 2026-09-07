@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<!--
+  Banco de pruebas para ajo-email-preview.js
+  ------------------------------------------
+  NO es Adobe. Es una maqueta local que reproduce las tres cosas que hacen
+  difícil detectar el canvas en el Email Designer real:
+
+    1. El canvas es un <iframe> y no un nodo del documento principal.
+    2. Ese iframe vive dentro de un shadow root (Adobe usa Spectrum Web
+       Components), así que un querySelectorAll sobre document no lo ve.
+    3. Hay otros iframes de chrome del editor (toolbar, panel) que compiten
+       como candidatos y no deben ganar el puntaje.
+
+  Sirve para validar la mecánica del script (traversal, puntaje, srcdoc,
+  sincronización), NO para validar los selectores reales de Adobe: eso solo
+  se confirma pegándolo en el Email Designer de verdad.
+
+  Uso: abrir este archivo en el navegador, abrir la consola, pegar
+  ajo-email-preview.js, y comprobar que el panel dice "Canvas detectado" y
+  que "Abrir preview" muestra el mail.
+-->
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Banco de pruebas — Email Designer simulado</title>
+  <style>
+    body { margin:0; font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+           background:#e2e8f0; color:#1e293b; }
+    header { background:#1e293b; color:#fff; padding:10px 14px; font-weight:600; }
+    .nota { padding:10px 14px; font-size:12px; color:#475569; }
+    #editor { display:block; height:70vh; margin:0 14px 14px; }
+  </style>
+</head>
+<body>
+  <header>Editor simulado (maqueta local — no es Adobe)</header>
+  <p class="nota">
+    El canvas está dentro de un shadow root. Editá el texto del mail directamente
+    en el recuadro blanco para probar la sincronización en vivo.
+  </p>
+
+  <!-- Componente que encierra todo en un shadow root, como los Spectrum WC -->
+  <editor-simulado id="editor"></editor-simulado>
+
+  <script>
+    // ── El email de prueba: tablas + imágenes, como un mailing real ──────────
+    const EMAIL = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  body { margin:0; padding:0; background:#f4f4f4; font-family:Arial,Helvetica,sans-serif; }
+  .wrap { width:600px; margin:0 auto; background:#ffffff; }
+</style></head>
+<body>
+  <table class="wrap" cellpadding="0" cellspacing="0" border="0">
+    <tr><td style="background:#0030b3;padding:24px;text-align:center;">
+      <!-- SVG embebido en data: URI — la maqueta no pide NADA a la red, así
+           funciona igual en una máquina con todo bloqueado -->
+      <img width="160" height="40" alt="Logo"
+        src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='40'%3E%3Crect width='160' height='40' fill='%230030b3'/%3E%3Ctext x='80' y='25' font-family='Arial' font-size='15' fill='white' text-anchor='middle'%3ELOGO%3C/text%3E%3C/svg%3E">
+    </td></tr>
+    <tr><td style="padding:28px 32px;">
+      <h1 style="margin:0 0 12px;font-size:22px;color:#202e44;" contenteditable="true">Hola, este es el titular</h1>
+      <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#4d5b70;" contenteditable="true">
+        Editá este texto y mirá cómo la ventana de preview se actualiza sola.
+        Este bloque simula el cuerpo de un mailing armado en el Email Designer.
+      </p>
+      <table cellpadding="0" cellspacing="0" border="0"><tr>
+        <td style="background:#ff7800;border-radius:4px;padding:12px 24px;">
+          <a href="#" style="color:#fff;text-decoration:none;font-weight:bold;font-size:14px;">Ver la oferta</a>
+        </td>
+      </tr></table>
+    </td></tr>
+    <tr><td style="padding:16px 32px;background:#f6f6f7;font-size:11px;color:#acb2bd;text-align:center;">
+      Pie del mail · maqueta de prueba
+    </td></tr>
+  </table>
+</body></html>`;
+
+    // ── El componente con shadow DOM que contiene el canvas ──────────────────
+    class EditorSimulado extends HTMLElement {
+      connectedCallback() {
+        const sh = this.attachShadow({ mode: "open" });
+        sh.innerHTML = `
+          <style>
+            :host { display:block; }
+            .marco { display:flex; height:100%; gap:8px; }
+            .lateral { width:180px; background:#fff; border:1px solid #cbd5e1; border-radius:6px; }
+            .centro { flex:1; display:flex; flex-direction:column; gap:8px; }
+            iframe { border:1px solid #cbd5e1; border-radius:6px; background:#fff; }
+            #barra { height:44px; }
+            #canvas { flex:1; }
+          </style>
+          <div class="marco">
+            <!-- Ruido: chrome del editor que NO debe ganar el puntaje -->
+            <iframe id="panel-lateral" class="lateral" title="Panel de componentes"></iframe>
+            <div class="centro">
+              <iframe id="toolbar" title="Barra de herramientas"></iframe>
+              <!-- El que sí debe ganar -->
+              <iframe id="design-canvas" title="Design canvas"></iframe>
+            </div>
+          </div>`;
+
+        const escribir = (id, html) => {
+          const f = sh.getElementById(id);
+          f.addEventListener("load", () => {});
+          const d = f.contentDocument;
+          d.open(); d.write(html); d.close();
+        };
+
+        // Los iframes de chrome: poco contenido, sin tablas de mail
+        escribir("panel-lateral", "<body style='font:12px sans-serif;padding:8px'>Componentes</body>");
+        escribir("toolbar", "<body style='font:12px sans-serif;padding:8px'>Negrita · Cursiva</body>");
+        // El canvas real
+        escribir("design-canvas", EMAIL);
+      }
+    }
+    customElements.define("editor-simulado", EditorSimulado);
+  </script>
+</body>
+</html>
