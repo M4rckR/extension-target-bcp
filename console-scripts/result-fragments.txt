@@ -1,0 +1,153 @@
+{
+ "origen": "https://acrites-ui-iframe.experience.adobe.net/solutions/pixel-acrites-iframe/iframe.html",
+ "fragmentos": 24,
+ "contenedor": {
+  "tag": "div",
+  "id": "",
+  "clase": "acr-container",
+  "tam": "294x2434",
+  "htmlLen": 85191,
+  "tablas": 131,
+  "imgs": 17,
+  "conStyleAttr": 305,
+  "styleTags": 0,
+  "total": 774
+ },
+ "cadena": [
+  {
+   "tag": "div",
+   "id": "",
+   "clase": "acr-container"
+  }
+ ],
+ "body": {
+  "clase": "acr-tpl-mode",
+  "htmlLen": 85304,
+  "total": 816
+ },
+ "hojas": {
+  "styleTags": [
+   4743,
+   2817,
+   821,
+   201,
+   414,
+   270,
+   102,
+   200,
+   331,
+   140,
+   1864,
+   215,
+   109,
+   345,
+   362,
+   122,
+   394,
+   4234,
+   4234,
+   704
+  ],
+  "links": [
+   "https://cdn.experience.adobe.net/solutions/pixel-acrites-iframe/assets/6811-74bfe0d09bacdeb3.css",
+   "https://cdn.experience.adobe.net/solutions/pixel-acrites-iframe/assets/appIframe-8919655706793832.css",
+   "https://acrites-ui-iframe.experience.adobe.net/solutions/pixel-acrites-iframe/assets/acd-core-plugins-iframe-fb96cfa6627d536a.css",
+   "https://acrites-ui-iframe.experience.adobe.net/solutions/pixel-acrites-iframe/assets/acd-plugin-tracking-iframe-deaa7640e056177a.css",
+   "https://acrites-ui-iframe.experience.adobe.net/solutions/pixel-acrites-iframe/assets/acd-plugin-image-iframe-281c8948776a320e.css",
+   "https://acrites-ui-iframe.experience.adobe.net/solutions/pixel-acrites-iframe/assets/acd-plugin-social-iframe-6881855986a6b6bf.css",
+   "https://acrites-ui-iframe.experience.adobe.net/solutions/pixel-acrites-iframe/assets/acd-plugin-aem-asset-iframe-00e4bfe5b1e4ab75.css",
+   "https://acrites-ui-iframe.experience.adobe.net/solutions/pixel-acrites-iframe/assets/acd-plugin-dynamic-content-acc-iframe-86a3b3b4fe18fdfc.css",
+   "https://acrites-ui-iframe.experience.adobe.net/solutions/pixel-acrites-iframe/assets/acd-plugin-experience-generation-iframe-cb1a612456572826.css",
+   "https://acrites-ui-iframe.experience.adobe.net/solutions/pixel-acrites-iframe/assets/acd-plugin-content-lock-iframe-acfeb95bc1478181.css",
+   "https://acrites-ui-iframe.experience.adobe.net/solutions/pixel-acrites-iframe/assets/acd-plugin-grid-iframe-b872c1b932e88705.css",
+   "https://acrites-ui-iframe.experience.adobe.net/solutions/pixel-acrites-iframe/assets/acd-plugin-content-check-iframe-451e0022ea9bfaaf.css",
+   "https://acrites-ui-iframe.experience.adobe.net/solutions/pixel-acrites-iframe/assets/acd-plugin-darkmode-iframe-6de704ad19fd072e.css"
+  ]
+ },
+ "clasesTop": [
+  [
+   "mobile-full",
+   51
+  ],
+  [
+   "mobile-margen",
+   20
+  ],
+  [
+   "mobile-height-auto",
+   8
+  ],
+  [
+   "table-radius",
+   7
+  ],
+  [
+   "mobile-show",
+   5
+  ],
+  [
+   "mobile-textcenter",
+   5
+  ],
+  [
+   "mobile-textleft",
+   5
+  ],
+  [
+   "image-global-responsive",
+   4
+  ],
+  [
+   "mobile-img-full",
+   4
+  ],
+  [
+   "is-highlight",
+   4
+  ],
+  [
+   "divider-mso-hidden",
+   4
+  ],
+  [
+   "colspan1",
+   3
+  ],
+  [
+   "acr-tmp-component",
+   3
+  ],
+  [
+   "mobile-hide",
+   3
+  ],
+  [
+   "mobile-width-35",
+   3
+  ],
+  [
+   "icono-responsive-50",
+   3
+  ],
+  [
+   "mobile-width-65",
+   3
+  ],
+  [
+   "mobile-valign-middle",
+   3
+  ],
+  [
+   "mobile-font-size-20px",
+   2
+  ],
+  [
+   "pdf-table-left",
+   1
+  ]
+ ],
+ "textareas": [],
+ "ocultosGrandes": []
+}
+
+
