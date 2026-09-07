@@ -7,10 +7,10 @@
  * POR QUÉ HACEN FALTA DOS PEGADOS
  * El iframe del canvas está sandboxeado sin `allow-popups`, así que desde
  * adentro no se puede abrir ni ventana ni pestaña — para el navegador son lo
- * mismo. Pero el sandbox NO bloquea `postMessage`, y el frame `top`
- * (experience.adobe.com) no está sandboxeado. Entonces:
+ * mismo. Pero el sandbox NO bloquea `postMessage`, y los frames de arriba no
+ * están sandboxeados. Entonces:
  *
- *   canvas (sandboxeado)            top (sin sandbox)
+ *   canvas (sandboxeado)          frame de arriba (sin sandbox)
  *     extrae el HTML  ──postMessage──►  lo escribe en la pestaña que abrió
  *     en cada edición
  *
@@ -18,20 +18,31 @@
  * Detecta solo en qué contexto está y toma el rol que corresponde, así no hay
  * que acordarse de qué script va en qué lado:
  *
- *   1. Contexto `top` → rol RECEPTOR. Abre la pestaña (el pegado en consola
- *      cuenta como gesto de usuario, así que el bloqueador de popups no la
- *      corta) y se queda escuchando.
- *   2. Contexto `iframe.html` → rol EMISOR. Extrae el mail y lo manda arriba
- *      en cada edición.
+ *   1. Un frame que NO sea el canvas → rol RECEPTOR. Abre la pestaña (el pegado
+ *      en consola cuenta como gesto de usuario) y se queda escuchando.
+ *   2. Contexto `iframe.html` → rol EMISOR. Extrae el mail y lo manda al
+ *      receptor en cada edición.
  *
- * El orden importa: primero el receptor, después el emisor. Si se hace al
- * revés, el receptor pide los datos al arrancar y el emisor responde, así que
- * igual se recupera.
+ * QUÉ FRAME ELEGIR PARA EL RECEPTOR — Y POR QUÉ IMPORTA
+ * La pestaña hereda la CSP del frame que la abrió. Con `top`
+ * (experience.adobe.com) el mail se ve pero **las imágenes salen rotas**: su
+ * política restringe `img-src`. Verificado en vivo.
+ *
+ * Por eso el receptor funciona desde cualquier frame, para poder recorrer la
+ * cadena hasta dar con uno cuya política deje cargar las imágenes:
+ *
+ *   top                                      experience.adobe.com  <- imagenes rotas
+ *   +- Main Content (pixel-acrites-ui)       experience.adobe.com
+ *      +- Main Content (campaign-acc-web-ui) cdn.experience.adobe.net  <- otro origen
+ *         +- iframe.html                     acrites-ui-iframe...   <- el canvas
+ *
+ * Cuando llega el mail, la pestaña informa cuántas imágenes cargaron. Si no
+ * cargan todas, ese frame no sirve: probar el receptor en otro.
  *
  * SEGURIDAD
- * El emisor manda el HTML dirigido exclusivamente a `experience.adobe.com`
- * (nunca con `'*'`), y el receptor descarta cualquier mensaje que no venga del
- * origen del canvas. Los dos orígenes están fijos, tomados de los recon.
+ * El emisor responde únicamente a quien le pidió, dirigido a su origen exacto y
+ * nunca con `'*'`, y solo si ese origen es un dominio de Adobe. El receptor
+ * descarta cualquier mensaje que no venga del origen del canvas.
  *
  * API:
  *   window.__accTab.abrir()     receptor: reabre la pestaña
@@ -44,9 +55,13 @@
 
   const NS = "__accTab";
   const CANAL = "acc-preview";
-  const ORIGEN_TOP = "https://experience.adobe.com";
   const ORIGEN_CANVAS = "https://acrites-ui-iframe.experience.adobe.net";
   const SEL_CONTENEDOR = ".acr-container";
+
+  // El HTML del mail solo se manda a frames de Adobe. El receptor puede vivir
+  // en cualquiera de los tres frames de la cadena, así que no se puede fijar un
+  // origen único: se valida el dominio.
+  const ORIGEN_VALIDO = /^https:\/\/[a-z0-9.-]+\.adobe\.(com|net)$/;
 
   // Volver a pegar reemplaza la instancia previa en vez de reusarla: si no,
   // pegar una versión corregida no tendría ningún efecto.
@@ -59,7 +74,6 @@
   }
 
   const esCanvas = !!document.querySelector(SEL_CONTENEDOR);
-  const esTop = window.top === window;
 
   // ══════════════════════════════════════════════════════════════════════════
   // ROL EMISOR — corre dentro del canvas
@@ -127,28 +141,42 @@
       );
     }
 
-    const estado = { observer: null, timer: null, enviados: 0 };
+    // Destinos = los frames que pidieron el mail. No se fija uno de antemano
+    // porque el receptor puede estar en cualquier frame de la cadena: la CSP
+    // de la pestaña la define quien la abre, así que hay que poder probar en
+    // varios hasta dar con uno cuya política deje cargar las imágenes.
+    const estado = { observer: null, timer: null, enviados: 0, destinos: [] };
 
     function enviar() {
       const html = extraer();
-      if (!html) return false;
-      try {
-        // Dirigido solo a experience.adobe.com, nunca '*': el HTML del mail no
-        // debe quedar legible para cualquier otro frame de la página.
-        window.top.postMessage({ source: CANAL, tipo: "html", html }, ORIGEN_TOP);
-        estado.enviados++;
-        return true;
-      } catch (e) {
-        console.warn("[ACC Tab] No se pudo enviar al frame top:", e.message);
-        return false;
+      if (!html || !estado.destinos.length) return false;
+      for (const d of estado.destinos) {
+        try {
+          // Siempre dirigido al origen exacto del que pidió, nunca '*': el HTML
+          // del mail no debe quedar legible para cualquier otro frame.
+          d.win.postMessage({ source: CANAL, tipo: "html", html }, d.origen);
+          estado.enviados++;
+        } catch (e) {
+          // frame cerrado o inaccesible — se ignora, el receptor reintenta
+        }
       }
+      return true;
     }
 
-    // El receptor pide los datos al arrancar, por si el emisor ya estaba
-    // corriendo. El pedido no lleva contenido, así que aceptarlo no filtra nada.
+    // El receptor pide los datos al arrancar. El pedido no lleva contenido, así
+    // que aceptarlo no filtra nada; lo que sí importa es a quién le respondemos.
     const onPedido = (ev) => {
       const d = ev.data;
-      if (d && d.source === CANAL && d.tipo === "pedido") enviar();
+      if (!d || d.source !== CANAL || d.tipo !== "pedido") return;
+      if (!ORIGEN_VALIDO.test(ev.origin)) {
+        console.warn("[ACC Tab] Pedido descartado, origen no reconocido:", ev.origin);
+        return;
+      }
+      if (!estado.destinos.some((x) => x.win === ev.source)) {
+        estado.destinos.push({ win: ev.source, origen: ev.origin });
+        console.log("[ACC Tab] Nuevo destino registrado:", ev.origin);
+      }
+      enviar();
     };
     window.addEventListener("message", onPedido);
 
@@ -178,10 +206,10 @@
       },
     };
 
-    enviar();
     console.log(
-      "[ACC Tab] EMISOR activo en el canvas. Mandando el mail al frame top en cada edición.\n" +
-      "Si la pestaña no muestra nada, ¿pegaste primero el script en el contexto `top`?"
+      "[ACC Tab] EMISOR activo en el canvas. Esperando que un receptor pida el mail.\n" +
+      "Si la pestaña no muestra nada, pegá este mismo archivo en el contexto del frame " +
+      "que abrió la pestaña."
     );
     return;
   }
@@ -189,8 +217,19 @@
   // ══════════════════════════════════════════════════════════════════════════
   // ROL RECEPTOR — corre en el frame top
   // ══════════════════════════════════════════════════════════════════════════
-  if (esTop) {
-    const estado = { pestana: null, ancho: 700, recibidos: 0, ultimoHtml: null, timerPedido: null };
+  // Corre en cualquier frame que no sea el canvas. NO se exige que sea `top`:
+  // la pestaña hereda la CSP del frame que la abre, y la de experience.adobe.com
+  // bloquea las imágenes del mail. Probando desde el frame intermedio
+  // (cdn.experience.adobe.net) la política puede ser otra.
+  {
+    const estado = {
+      pestana: null,
+      ancho: 700,
+      recibidos: 0,
+      ultimoHtml: null,
+      timerPedido: null,
+      origen: location.origin,
+    };
 
     const SHELL = `<head>
 <meta charset="utf-8">
@@ -215,6 +254,7 @@
   <div class="barra">
     <span class="barra__t">Preview del mailing</span>
     <span class="barra__e" id="estado">esperando el mail…</span>
+    <span class="barra__e" id="imgs"></span>
     <button id="escritorio" data-activo="si">Escritorio</button>
     <button id="movil">Móvil</button>
     <button id="descargar">Descargar .html</button>
@@ -268,6 +308,36 @@
       if (!t || t.closed) return;
       const vista = t.document.getElementById("vista");
       if (!vista) return;
+
+      // Contar imágenes cargadas es el dato que decide si este frame sirve:
+      // si la CSP heredada bloquea img-src, el mail se ve pero salen todas
+      // rotas. El srcdoc hereda el origen del padre, así que se puede inspeccionar.
+      vista.onload = () => {
+        setTimeout(() => {
+          let ok = 0;
+          let total = 0;
+          try {
+            const imgs = vista.contentDocument.images;
+            total = imgs.length;
+            for (const im of imgs) if (im.complete && im.naturalWidth > 0) ok++;
+          } catch (e) {
+            // no se pudo inspeccionar — se deja el conteo en 0
+          }
+          const veredicto = total === 0 ? "sin imágenes" : ok + "/" + total + " imágenes";
+          const e = t.document.getElementById("imgs");
+          if (e) {
+            e.textContent = veredicto;
+            e.style.color = total && ok === total ? "#4ade80" : "#fca5a5";
+          }
+          console.log(
+            "[ACC Tab] Abierta desde " + estado.origen + " → " + veredicto +
+            (total && ok < total
+              ? "\n  La CSP de este frame bloquea las imágenes. Probá pegar el receptor en otro frame."
+              : "")
+          );
+        }, 1500); // margen para que terminen de pedirse
+      };
+
       vista.srcdoc = html;
       vista.width = estado.ancho;
       t.document.getElementById("estado").textContent =
@@ -323,8 +393,10 @@
     estado.timerPedido = setInterval(pedir, 3000);
 
     console.log(
-      "[ACC Tab] RECEPTOR activo en el frame top. Pestaña abierta.\n" +
-      "Ahora cambiá el contexto de la consola a `iframe.html` y pegá este MISMO archivo."
+      "[ACC Tab] RECEPTOR activo en " + estado.origen + ". Pestaña abierta.\n" +
+      "Ahora cambiá el contexto de la consola a `iframe.html` y pegá este MISMO archivo.\n" +
+      "Cuando llegue el mail se informa cuántas imágenes cargaron: si no cargan todas, " +
+      "la CSP de este frame las bloquea y hay que probar el receptor en otro frame."
     );
     return;
   }
