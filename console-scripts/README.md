@@ -33,7 +33,8 @@ retomás esto después de un tiempo.
 
 | Archivo | Qué es | Cuándo se usa |
 | --- | --- | --- |
-| **`acc-email-preview.js`** | **La funcionalidad: preview del mail en un panel** | **Es el que se usa** |
+| **`acc-preview-pestana.js`** | **Preview en una pestaña aparte** | Para demos — se pega 2 veces |
+| **`acc-email-preview.js`** | **Preview en un panel dentro del canvas** | Un solo pegado, más simple |
 | `recon.js` | Reconocimiento del DOM, solo lectura | Ya cumplió — ubicó el canvas |
 | `recon-fragmentos.js` | Contenedor del mail y origen de los estilos | Ya cumplió |
 | `recon-estilos.js` | Cuál de los `<style>` es del mail | Ya cumplió |
@@ -119,22 +120,66 @@ __accPreview.destruir()       // cortar la sincronización y sacar el panel
 copy(__accPreview.html())     // copiar el HTML del mail al portapapeles
 ```
 
-### Por qué un panel y no una ventana aparte
+---
 
-La primera versión abría una ventana con `window.open`. **No funciona:**
+## Preview en una pestaña aparte (`acc-preview-pestana.js`)
+
+Para demos, cuando hace falta mostrar el mail en una pestaña propia y no en un
+panel al costado.
+
+### Por qué se pega dos veces
+
+Desde el canvas no se puede abrir ni ventana ni pestaña — para el navegador son
+lo mismo, y las dos las bloquea el sandbox:
 
 ```
 Blocked opening '' in a new window because the request was made in a
 sandboxed frame whose 'allow-popups' permission is not set.
 ```
 
-El iframe del canvas está sandboxeado sin `allow-popups`. No es el bloqueador de
-popups ni falta de gesto de usuario: es el atributo `sandbox` del iframe, y no
-hay forma de saltarlo desde el código de la página.
+Pero el sandbox **no** bloquea `postMessage`, y el frame `top`
+(`experience.adobe.com`) no está sandboxeado. De ahí el puente:
 
-**En extensión sí se va a poder** abrir ventana aparte, con
-`chrome.windows.create` desde el service worker, que no está sujeto al sandbox
-del frame. Es otro punto donde la extensión hace algo que el script no puede.
+```
+canvas (sandboxeado)            top (sin sandbox)
+  extrae el HTML  ──postMessage──►  lo escribe en la pestaña que abrió
+  en cada edición
+```
+
+**Es un solo archivo.** Detecta solo en qué contexto está y toma el rol que
+corresponde, así no hay que acordarse de qué script va en qué lado.
+
+### Los dos pasos
+
+| Orden | Contexto de la consola | Qué pasa |
+| --- | --- | --- |
+| 1º | **`top`** | Abre la pestaña y se queda escuchando |
+| 2º | **`iframe.html`** | Empieza a mandar el mail en cada edición |
+
+Pegar **el mismo archivo** en los dos, cambiando solo el desplegable. Si se hace
+al revés igual funciona: el receptor pide los datos al arrancar y reintenta cada
+3 segundos.
+
+En la pestaña: **Escritorio / Móvil** y **Descargar .html**.
+
+```js
+__accTab.abrir()      // receptor: reabrir la pestaña si la cerraste
+__accTab.enviar()     // emisor: mandar el mail ahora
+__accTab.destruir()   // desmontar el rol de ese contexto
+```
+
+### Seguridad del puente
+
+El emisor manda el HTML dirigido **exclusivamente** a `experience.adobe.com`,
+nunca con `'*'`, así ningún otro frame de la página puede leerlo. El receptor
+descarta cualquier mensaje que no venga de
+`acrites-ui-iframe.experience.adobe.net`. El único mensaje que sí va con `'*'`
+es el pedido inicial del receptor, que no lleva contenido.
+
+> En la extensión nada de esto hace falta: `chrome.tabs.create` desde el service
+> worker no está sujeto al sandbox del frame, y un content script con
+> `all_frames: true` ya corre dentro del canvas. El puente existe solo porque
+> desde la consola no hay otra manera.
 
 ### Cómo extrae
 
