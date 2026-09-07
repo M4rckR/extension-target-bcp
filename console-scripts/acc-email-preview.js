@@ -31,7 +31,19 @@
  *   .refrescar()  re-renderiza a mano
  *   .html()       devuelve el HTML extraído — `copy(__accPreview.html())`
  *   .estilos()    tabla de qué CSS se llevó, qué descartó y por qué
+ *   .variantes()  tabla de bloques condicionales y cuál queda elegido
  *   .destruir()   corta la sincronización y saca el panel
+ *
+ * CONTENIDO CONDICIONAL
+ * El mail tiene bloques que cambian según variables del perfil (header y footer
+ * distintos por segmento). El editor deja TODAS las ramas en el DOM, así que si
+ * no se podan se ven apiladas. El panel trae dos niveles de control:
+ *
+ *   - Escenario: un control por variable de condición. Elegir
+ *     CODSUBSEGMENTO = M1N resuelve de una vez el header, el footer y todo lo
+ *     que dependa de ella.
+ *   - Bloques: un control por grupo, para forzar una rama a mano cuando la
+ *     condición no se pudo parsear o se quiere ver una puntual.
  */
 (() => {
   "use strict";
@@ -66,6 +78,10 @@
     ancho: ANCHOS.escritorio, // ancho simulado del mail
     panel: 0,                 // ancho del panel en pantalla; se calcula al abrir
     ajustar: true,            // escalar el mail para que entre en el panel
+    escenario: {},            // variable de condicion -> valor elegido
+    manual: {},               // grupo -> id de variante forzada, o '__todas__'
+    mostrarTodas: false,      // true = no podar nada, se ven todas las ramas
+    verVariantes: true,       // mostrar el selector de variantes en el panel
   };
 
   const contenedor = () => document.querySelector(SEL_CONTENEDOR);
@@ -120,6 +136,131 @@
     });
   }
 
+  // ── 1 bis. Contenido dinámico: las variantes condicionales ─────────────────
+  // El editor deja TODAS las ramas en el DOM, marcadas con atributos propios:
+  //
+  //   <div class="acr-dc-variant"
+  //        acr-dc-variant-group="1778750287213"   ← agrupa las ramas del mismo condicional
+  //        acr-dc-variant-index="1"               ← orden dentro del grupo
+  //        acr-dc-variant-label="Header - Consumo"
+  //        acr-dc-cond="targetData.CODSUBSEGMENTO == 'M1N'">
+  //
+  // Como están todas, la preview puede quedarse con una y descartar el resto,
+  // que es lo que haría el mail real. Sin esto se ven todas apiladas.
+  const SEL_VARIANTE = ".acr-dc-variant";
+
+  /** Todas las variantes del mail, con sus atributos ya leídos. */
+  function variantes() {
+    const cont = contenedor();
+    if (!cont) return [];
+    return [...cont.querySelectorAll(SEL_VARIANTE)].map((el) => ({
+      el,
+      id: el.getAttribute("acr-dc-variant-id") || "",
+      grupo: el.getAttribute("acr-dc-variant-group") || "",
+      indice: Number(el.getAttribute("acr-dc-variant-index") || 0),
+      etiqueta: el.getAttribute("acr-dc-variant-label") || "(sin nombre)",
+      cond: el.getAttribute("acr-dc-cond") || "",
+    }));
+  }
+
+  /** Map grupo → variantes ordenadas por índice. */
+  function grupos() {
+    const g = new Map();
+    for (const v of variantes()) {
+      if (!g.has(v.grupo)) g.set(v.grupo, []);
+      g.get(v.grupo).push(v);
+    }
+    for (const arr of g.values()) arr.sort((a, b) => a.indice - b.indice);
+    return g;
+  }
+
+  // Se parsean solo comparaciones simples `algo == 'valor'`. Alcanza para el
+  // caso real (targetData.CODSUBSEGMENTO == 'M1N') y permite ofrecer un
+  // selector por variable en vez de uno por bloque: elegir un valor resuelve
+  // de una vez el header, el footer y todo lo que dependa de esa variable.
+  // Las condiciones que no matchean quedan como "no evaluable" y se resuelven
+  // a mano con el selector del grupo.
+  const RE_COMPARACION = /([A-Za-z_$][\w.$]*)\s*(===?|!==?)\s*['"]([^'"]*)['"]/g;
+
+  function parsearCond(cond) {
+    const partes = [];
+    RE_COMPARACION.lastIndex = 0;
+    let m;
+    while ((m = RE_COMPARACION.exec(cond))) {
+      partes.push({ variable: m[1], negado: m[2][0] === "!", valor: m[3] });
+    }
+    // Si quedó texto con operadores lógicos que no entendemos, se avisa.
+    const evaluable = partes.length > 0 && !/\|\||&&|\bor\b|\band\b/i.test(cond);
+    return { partes, evaluable };
+  }
+
+  /** Variables detectadas en las condiciones, con sus valores posibles. */
+  function variablesDetectadas() {
+    const vars = new Map();
+    for (const v of variantes()) {
+      for (const p of parsearCond(v.cond).partes) {
+        if (!vars.has(p.variable)) vars.set(p.variable, new Set());
+        vars.get(p.variable).add(p.valor);
+      }
+    }
+    return vars;
+  }
+
+  /**
+   * Nombre legible de un valor de condición, deducido de las etiquetas.
+   * El editor las escribe como "Header - Consumo" / "Header - Bex", así que el
+   * tramo posterior al guion nombra el escenario: la variante con condición
+   * `== 'M1N'` se llama "Consumo" y la de `== 'X1N'`, "Bex". Se deduce del mail
+   * en vez de hardcodearlo, así sigue andando en otros mails y otras variables.
+   * Devuelve "" si no se puede deducir, y ahí se muestra el valor crudo.
+   */
+  function nombreDeValor(variable, valor) {
+    const nombres = new Set();
+    for (const v of variantes()) {
+      const coincide = parsearCond(v.cond).partes.some(
+        (p) => p.variable === variable && !p.negado && p.valor === valor
+      );
+      if (!coincide) continue;
+      const partes = v.etiqueta.split(" - ");
+      if (partes.length > 1) nombres.add(partes.slice(1).join(" - ").trim());
+    }
+    return nombres.size === 1 ? " · " + [...nombres][0] : "";
+  }
+
+  /** ¿Esta variante aplica con el escenario elegido? */
+  function aplica(v) {
+    const { partes, evaluable } = parsearCond(v.cond);
+    if (!evaluable) return false;
+    return partes.every((p) => {
+      const actual = estado.escenario[p.variable];
+      if (actual === undefined) return false;
+      return p.negado ? actual !== p.valor : actual === p.valor;
+    });
+  }
+
+  /**
+   * Qué variante se muestra de cada grupo. Prioridad:
+   *   1. Elección manual del usuario para ese grupo.
+   *   2. La primera cuya condición se cumple con el escenario.
+   *   3. La que no tiene condición (rama por defecto / "si no").
+   *   4. Ninguna — el grupo entero se oculta, que es lo que haría el mail real.
+   */
+  function elegidas() {
+    const sel = new Map();
+    for (const [grupo, arr] of grupos()) {
+      const manual = estado.manual[grupo];
+      if (manual === "__todas__") {
+        sel.set(grupo, "__todas__");
+      } else if (manual) {
+        sel.set(grupo, manual);
+      } else {
+        const match = arr.find(aplica) || arr.find((v) => !v.cond.trim());
+        sel.set(grupo, match ? match.id : null);
+      }
+    }
+    return sel;
+  }
+
   // ── 2. Extracción del HTML ─────────────────────────────────────────────────
   // Limpieza deliberadamente mínima: se sacan las marcas de edición
   // (contenteditable, spellcheck) y los <script>, nada más. NO se tocan clases
@@ -141,6 +282,18 @@
     for (const el of copia.querySelectorAll("[contenteditable]")) el.removeAttribute("contenteditable");
     for (const el of copia.querySelectorAll("[spellcheck]")) el.removeAttribute("spellcheck");
     for (const el of copia.querySelectorAll("script")) el.remove();
+
+    // Dejar una sola variante por grupo, como haría el mail real. Si no se
+    // podan, se ven todas las ramas apiladas (dos headers, dos footers…).
+    if (!estado.mostrarTodas) {
+      const sel = elegidas();
+      for (const el of copia.querySelectorAll(SEL_VARIANTE)) {
+        const grupo = el.getAttribute("acr-dc-variant-group") || "";
+        const elegida = sel.get(grupo);
+        if (elegida === "__todas__") continue;
+        if (el.getAttribute("acr-dc-variant-id") !== elegida) el.remove();
+      }
+    }
 
     const base = String(document.baseURI || location.href).replace(/"/g, "&quot;");
     const css = clasificarEstilos()
@@ -186,6 +339,17 @@
     .barra label { font-size:11px; display:flex; align-items:center; gap:4px; cursor:pointer; }
     .barra__x { background:transparent!important; font-size:14px!important; padding:0 5px!important; }
     .estado { padding:4px 9px; background:#e2e8f0; color:#475569; font-size:10px; flex:none; }
+    .vars { flex:none; max-height:32%; overflow:auto; background:#eef2ff;
+            border-bottom:1px solid #c7d2fe; padding:7px 9px; }
+    .vars__t { font-size:10px; font-weight:600; color:#4338ca; text-transform:uppercase;
+               letter-spacing:.04em; margin-bottom:5px; }
+    .vars__f { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+    .vars__f label { flex:1; font-size:11px; color:#1e293b; overflow:hidden;
+                     text-overflow:ellipsis; white-space:nowrap; }
+    .vars__f select { flex:1; min-width:0; font:inherit; font-size:11px; padding:3px 4px;
+                      border:1px solid #c7d2fe; border-radius:4px; background:#fff; }
+    .vars__sep { border-top:1px dashed #c7d2fe; margin:6px 0 5px; }
+    .vars__vacio { font-size:11px; color:#64748b; }
     .lienzo { flex:1; overflow:auto; padding:10px; }
     .escala { transform-origin: top left; }
     iframe { border:1px solid #cbd5e1; background:#fff; display:block; }
@@ -216,11 +380,13 @@
           <button id="escritorio" data-activo="si">700</button>
           <button id="movil">375</button>
           <button id="ajustar" data-activo="si">Ajustar</button>
+          <button id="verVars" data-activo="si">Variantes</button>
           <button id="refrescar">↻</button>
           <button id="copiar">Copiar</button>
           <button class="barra__x" id="cerrar">✕</button>
         </div>
         <div class="estado" id="estado"></div>
+        <div class="vars" id="vars"></div>
         <div class="lienzo"><div class="escala" id="escala"><iframe id="vista" referrerpolicy="no-referrer"></iframe></div></div>
       </div>`;
 
@@ -241,6 +407,11 @@
       estado.autoSync = e.target.checked;
       if (estado.autoSync) arrancarSync();
       else pararSync();
+    };
+    $("verVars").onclick = () => {
+      estado.verVariantes = !estado.verVariantes;
+      $("verVars").dataset.activo = estado.verVariantes ? "si" : "no";
+      pintarVariantes();
     };
     $("copiar").onclick = () => copiar();
 
@@ -263,6 +434,121 @@
 
     aplicarMedidas();
     return sh;
+  }
+
+  /**
+   * Dibuja el selector de variantes: arriba un control por variable de
+   * condición (elegir un valor resuelve de una vez todos los bloques que
+   * dependen de ella), abajo uno por grupo para forzar a mano cuando la
+   * condición no se pudo parsear o se quiere ver una rama puntual.
+   */
+  function pintarVariantes() {
+    if (!estado.host || !estado.host.isConnected) return;
+    const sh = estado.host.shadowRoot;
+    const caja = sh.getElementById("vars");
+    if (!caja) return;
+
+    if (!estado.verVariantes) {
+      caja.style.display = "none";
+      return;
+    }
+    caja.style.display = "";
+    caja.textContent = "";
+
+    const gs = grupos();
+    if (!gs.size) {
+      caja.innerHTML = '<div class="vars__vacio">Este mail no tiene bloques condicionales.</div>';
+      return;
+    }
+
+    const vars = variablesDetectadas();
+    const sel = elegidas();
+
+    const titulo = (txt) => {
+      const d = document.createElement("div");
+      d.className = "vars__t";
+      d.textContent = txt;
+      caja.appendChild(d);
+    };
+    const fila = (etiqueta, tip) => {
+      const f = document.createElement("div");
+      f.className = "vars__f";
+      const l = document.createElement("label");
+      l.textContent = etiqueta;
+      if (tip) l.title = tip;
+      const s = document.createElement("select");
+      f.appendChild(l);
+      f.appendChild(s);
+      caja.appendChild(f);
+      return s;
+    };
+
+    // ── Escenario: un control por variable ──────────────────────────────────
+    if (vars.size) {
+      titulo("Escenario");
+      for (const [variable, valores] of vars) {
+        // Se muestra solo el último tramo (CODSUBSEGMENTO en vez de
+        // targetData.CODSUBSEGMENTO); el nombre completo va en el tooltip.
+        const corto = variable.split(".").pop();
+        const s = fila(corto, variable);
+        const opciones = [["", "(sin definir)"]].concat(
+          [...valores].sort().map((v) => [v, v + nombreDeValor(variable, v)])
+        );
+        for (const [valor, texto] of opciones) {
+          const o = document.createElement("option");
+          o.value = valor;
+          o.textContent = texto;
+          if ((estado.escenario[variable] || "") === valor) o.selected = true;
+          s.appendChild(o);
+        }
+        s.onchange = (e) => {
+          const v = e.target.value;
+          if (v) estado.escenario[variable] = v;
+          else delete estado.escenario[variable];
+          // Elegir un escenario invalida las elecciones manuales previas:
+          // si no, el manual ganaría y parecería que el escenario no hace nada.
+          estado.manual = {};
+          refrescar();
+        };
+      }
+    }
+
+    // ── Bloques: un control por grupo, para forzar a mano ───────────────────
+    const sep = document.createElement("div");
+    sep.className = "vars__sep";
+    caja.appendChild(sep);
+    titulo("Bloques (" + gs.size + ")");
+
+    for (const [grupo, arr] of gs) {
+      const activa = sel.get(grupo);
+      const nombre = (arr[0].etiqueta || "").split(" - ")[0] || "Bloque";
+      const s = fila(nombre, arr.map((v) => v.etiqueta + (v.cond ? " · " + v.cond : "")).join("\n"));
+
+      const opciones = [["", "auto"]]
+        .concat(arr.map((v) => [v.id, v.etiqueta]))
+        .concat([["__todas__", "todas"], ["__ninguna__", "ocultar"]]);
+
+      for (const [valor, texto] of opciones) {
+        const o = document.createElement("option");
+        o.value = valor;
+        // En "auto" se aclara qué quedó elegido, para no tener que adivinar.
+        if (!valor) {
+          const elegida = arr.find((v) => v.id === activa);
+          o.textContent = "auto → " + (elegida ? elegida.etiqueta : "ninguna");
+        } else {
+          o.textContent = texto;
+        }
+        if ((estado.manual[grupo] || "") === valor) o.selected = true;
+        s.appendChild(o);
+      }
+
+      s.onchange = (e) => {
+        const v = e.target.value;
+        if (!v) delete estado.manual[grupo];
+        else estado.manual[grupo] = v;
+        refrescar();
+      };
+    }
   }
 
   /** Ancho del panel, ancho simulado del mail y escala para que entre. */
@@ -307,6 +593,7 @@
 
     sh.getElementById("vista").srcdoc = html;
     aplicarMedidas();
+    pintarVariantes();
     est.textContent =
       new Date().toLocaleTimeString("es-PE") + " · " + Math.round(html.length / 1024) + " KB";
   }
@@ -412,6 +699,28 @@
     console.log("[ACC Preview] Desmontado.");
   }
 
+  /** Diagnóstico: qué variantes hay, su condición y cuál queda elegida. */
+  function infoVariantes() {
+    const sel = elegidas();
+    const filas = [];
+    for (const [grupo, arr] of grupos()) {
+      for (const v of arr) {
+        const { evaluable } = parsearCond(v.cond);
+        filas.push({
+          grupo,
+          indice: v.indice,
+          etiqueta: v.etiqueta,
+          cond: v.cond,
+          evaluable,
+          elegida: sel.get(grupo) === v.id || sel.get(grupo) === "__todas__",
+        });
+      }
+    }
+    console.table(filas);
+    console.log("Escenario:", estado.escenario, "| Manual:", estado.manual);
+    return filas;
+  }
+
   function estilos() {
     const filas = clasificarEstilos().map((e) => ({
       i: e.i,
@@ -425,7 +734,7 @@
     return filas;
   }
 
-  window[NS] = { abrir, refrescar, html: extraer, estilos, destruir, estado };
+  window[NS] = { abrir, refrescar, html: extraer, estilos, variantes: infoVariantes, destruir, estado };
 
   window.addEventListener("resize", () => aplicarMedidas());
 

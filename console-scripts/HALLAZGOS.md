@@ -201,6 +201,48 @@ aparece en otro entorno.
 Por eso la pestaña muestra un contador de imágenes cargadas: es la forma rápida
 de saber si el frame elegido sirve, sin mirar a ojo.
 
+## 5 ter. Contenido condicional: todas las ramas están en el DOM
+
+El mail tiene bloques que cambian según variables del perfil — header y footer
+distintos por segmento. **El editor deja todas las ramas en el DOM**, marcadas
+con atributos propios del plugin de contenido dinámico:
+
+```html
+<div class="acr-dc-variant acr-structure"
+     acr-dc-variant-group="1778750287213"        <!-- agrupa las ramas del mismo condicional -->
+     acr-dc-variant-index="1"                    <!-- orden dentro del grupo -->
+     acr-dc-variant-label="Header - Consumo"     <!-- nombre legible -->
+     acr-dc-cond="targetData.CODSUBSEGMENTO == 'M1N'"
+     acr-dc-variant-id="1778750287214-1275572"
+     acr-dc-condid="1779068729281-280260609">
+```
+
+| Atributo | Para qué |
+| --- | --- |
+| `acr-dc-variant-group` | Todas las ramas de un mismo condicional comparten este id |
+| `acr-dc-variant-index` | Orden dentro del grupo |
+| `acr-dc-variant-label` | Nombre legible, del tipo `"Header - Consumo"` |
+| `acr-dc-cond` | La condición, en JS: `targetData.CODSUBSEGMENTO == 'M1N'` |
+| `acr-dc-variant-id` | Identifica la rama |
+
+Consecuencias:
+
+- **Si no se podan, se ven todas apiladas** (dos headers, dos footers). Por eso
+  `acc-email-preview.js` deja una sola por grupo, que es lo que haría el mail
+  real.
+- **La condición es parseable**, así que se puede ofrecer un control por
+  *variable* en vez de uno por bloque: elegir `CODSUBSEGMENTO = M1N` resuelve de
+  una vez el header, el footer y todo lo que dependa de ella. Solo se parsean
+  comparaciones simples `algo == 'valor'`; lo que no se entiende queda para el
+  selector manual por grupo.
+- **El nombre del escenario sale de las etiquetas.** El editor las escribe como
+  `"Header - Consumo"` / `"Header - Bex"`, así que el tramo posterior al guion
+  nombra el valor: `M1N` es Consumo y `X1N` es Bex. Se deduce del mail en vez de
+  hardcodearlo, para que siga andando en otros mails y con otras variables.
+
+`__accPreview.variantes()` lista los grupos, sus condiciones y cuál queda
+elegida.
+
 ## 6. Qué significa esto para la extensión
 
 Los dos obstáculos que frenan al script de consola **no existen en una
