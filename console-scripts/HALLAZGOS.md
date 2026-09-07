@@ -138,6 +138,28 @@ veces, idéntico byte a byte**.
 
 ---
 
+## 4 bis. El envoltorio exterior del mail
+
+El mail no arranca en su primera tabla: `div.acr-container` es un envoltorio con
+**fondo propio** — medido `rgb(242, 244, 248)` (`#f2f4f8`), aplicado con
+`!important` sobre `#acr-body` — que en el mail real se ve como el marco gris
+detrás del contenido.
+
+Al extraer hay que conservarlo. Tomar solo `innerHTML` del contenedor deja el
+mail sobre blanco y pegado al borde, que no es como se ve de verdad. La
+extracción usa `outerHTML`, así el contenedor viaja con sus clases y atributos.
+
+**El color se lee del estilo computado del canvas, no de las hojas.** Así no
+importa cuál de los 20 `<style>` lo declaró — de hecho el que lo trae es uno de
+los que se descartan por tener selectores `.acr-` — ni si venía con
+`!important`, y sigue andando si Adobe lo mueve de lugar en un release.
+
+No se copia el **ancho** del contenedor: en el canvas mide 294 px porque lo
+dicta el ancho del editor, no el mail. El ancho real lo definen las tablas
+internas.
+
+---
+
 ## 5. El canvas está sandboxeado
 
 El iframe del canvas tiene el atributo `sandbox` **sin `allow-popups`**.

@@ -295,6 +295,28 @@
       }
     }
 
+
+    // ── Envoltorio exterior ──────────────────────────────────────────────────
+    // El mail no arranca en su primera tabla: alrededor hay un contenedor con
+    // fondo propio (medido: rgb(242,244,248)) que en el mail real se ve como el
+    // marco gris detrás del contenido. Antes se tomaba solo `innerHTML` del
+    // contenedor y ese envoltorio se perdía: el mail quedaba sobre blanco y
+    // pegado al borde.
+    //
+    // El color se lee del estilo COMPUTADO del canvas, no de las hojas: así no
+    // importa cuál de los 20 <style> lo declaró ni si venía con !important, y
+    // sigue andando si Adobe lo cambia de lugar. Se descarta el transparente
+    // para no pisar el fondo con nada.
+    let fondo = "";
+    try {
+      const cuerpo = document.getElementById("acr-body") || document.body;
+      const c = getComputedStyle(cuerpo).backgroundColor;
+      if (c && c !== "transparent" && !/rgba\(0, 0, 0, 0\)/.test(c)) fondo = c;
+    } catch (e) {
+      // sin fondo detectable — se deja el del propio mail
+    }
+    const estiloBody = "margin:0" + (fondo ? ";background-color:" + fondo : "");
+
     const base = String(document.baseURI || location.href).replace(/"/g, "&quot;");
     const css = clasificarEstilos()
       .filter((e) => e.llevar)
@@ -310,7 +332,7 @@
       '<meta name="referrer" content="no-referrer">\n' +
       '<base href="' + base + '">\n' +
       "<style>\n" + css + "\n</style>\n" +
-      '</head>\n<body style="margin:0">\n' + copia.innerHTML + "\n</body>\n</html>"
+      "</head>\n<body style=\"" + estiloBody + "\">\n" + copia.outerHTML + "\n</body>\n</html>"
     );
   }
 
