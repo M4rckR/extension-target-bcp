@@ -64,7 +64,7 @@
     timerSalud: null,
     autoSync: true,
     ancho: ANCHOS.escritorio, // ancho simulado del mail
-    panel: 520,               // ancho del panel en pantalla
+    panel: 0,                 // ancho del panel en pantalla; se calcula al abrir
     ajustar: true,            // escalar el mail para que entre en el panel
   };
 
@@ -186,8 +186,18 @@
     iframe { border:1px solid #cbd5e1; background:#fff; display:block; }
   `;
 
+  /**
+   * Ancho inicial del panel, relativo al frame. El canvas puede ser angosto
+   * (se midió en 678 px), así que un ancho fijo se comería casi todo el editor:
+   * se toma el 45% y se acota entre 300 y 560.
+   */
+  function anchoInicial() {
+    return Math.max(300, Math.min(560, Math.round(window.innerWidth * 0.45)));
+  }
+
   function crearPanel() {
     if (estado.host && estado.host.isConnected) return estado.host.shadowRoot;
+    if (!estado.panel) estado.panel = anchoInicial();
 
     const host = document.createElement("div");
     host.id = "acc-preview-host";
