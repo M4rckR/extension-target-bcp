@@ -327,6 +327,49 @@ Automation 360. Hay precedente de aprobación para herramientas de Adobe.
 
 ---
 
+## 9. Cierre de la sesión del 2026-09-07
+
+Todo lo de este documento salió de una sola sesión. Resumen de cómo se llegó,
+por si sirve de método la próxima vez.
+
+**La primera versión se escribió adivinando y hubo que tirarla entera.** Asumía
+Journey Optimizer, canvas en un iframe legible y detección por heurística de
+puntaje. Nada de eso aplicaba: era Campaign Classic, el canvas estaba a cuatro
+frames de profundidad y cross-origin, y el mail vivía en un selector concreto que
+no hacía falta adivinar. Quedó en `obsoleto/` como registro.
+
+**Lo que sí funcionó fue reconocer antes de construir.** Cuatro scripts de solo
+lectura, corridos contra el editor real, resolvieron en una tarde lo que la
+heurística no iba a acertar nunca:
+
+| Recon | Qué resolvió |
+| --- | --- |
+| `recon.js` | Que era ACC, la cadena de frames, y que el canvas era cross-origin |
+| `recon-fragmentos.js` | `.acr-container`, los estilos inline, los fragmentos |
+| `recon-estilos.js` | Cuál de los 20 `<style>` es del mail y cuál del editor |
+| `recon-condicionales.js` | Los atributos `acr-dc-*` del contenido dinámico |
+
+**Tres límites del entorno se descubrieron chocándolos, no leyéndolos:** el
+sandbox sin `allow-popups` (secc. 5), la CSP que decide dónde puede vivir la
+preview (secc. 5 bis), y el envoltorio exterior que se perdía al extraer
+(secc. 4 bis). Ninguno era previsible desde el código.
+
+**Un error propio que costó tres corridas:** el guard de idempotencia estaba
+copiado de `inject.js`, donde reusar la instancia previa tiene sentido porque el
+código nunca cambia entre inyecciones. En un script de consola que se itera, eso
+hacía que pegar una versión corregida no tuviera ningún efecto. Ahora desmonta y
+arranca de cero.
+
+### Qué quedó sin hacer
+
+- Portar a la extensión (el objetivo final).
+- Probar la sincronización en una sesión larga de edición.
+- Verificar `.acr-container` en otros tipos de delivery.
+- Decidir qué hacer con `muestras/fuente-adobe.html`: es contenido real de un
+  mailing del banco en un repo público.
+
+---
+
 ## 8. Limitaciones de fondo
 
 - El HTML extraído es **lo que renderiza el editor**, no lo que Adobe envía al

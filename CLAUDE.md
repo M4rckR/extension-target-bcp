@@ -170,17 +170,32 @@ extensión, y recién después se porta a una pestaña del popup. Los scripts no
 usan APIs `chrome.*` — son JS de página, igual que `inject.js` en el mundo MAIN,
 y por eso son portables en las dos direcciones.
 
-Trabajo en curso: **preview del mailing del editor de Adobe Campaign Classic**
-(detectar el mail que se está editando y mostrarlo renderizado al lado).
+Contenido: **preview del mailing del editor de Adobe Campaign Classic** —
+detectar el mail que se está editando y mostrarlo renderizado al lado,
+sincronizado en vivo, con selector de escenarios para el contenido condicional.
+**Funciona, verificado en vivo el 2026-09-07.**
 
-👉 **`console-scripts/HALLAZGOS.md`** tiene la bitácora técnica completa: qué
-producto es, la cadena de cuatro frames en tres dominios, dónde vive el HTML del
-mail (`div.acr-container`), cómo separar el CSS del mail del CSS del editor, y
-las restricciones del sandbox del canvas. Todo medido en vivo. **Leerlo antes de
-tocar nada de esa carpeta** — casi todo ahí es contraintuitivo y costó tres
-rondas de reconocimiento averiguarlo.
+```
+console-scripts/
+├── README.md      cómo se usa
+├── HALLAZGOS.md   bitácora técnica — por qué funciona así
+├── preview/       los dos scripts que se usan
+├── recon/         diagnóstico, para rehacerlo si Adobe cambia el editor
+├── muestras/      volcado real del canvas
+└── obsoleto/      apuntaban a Journey Optimizer, no usar
+```
 
-`console-scripts/README.md` documenta cómo se usa cada script.
+👉 **`console-scripts/HALLAZGOS.md`** tiene la bitácora completa: qué producto
+es, la cadena de cuatro frames en tres dominios, dónde vive el HTML del mail
+(`div.acr-container`), cómo separar el CSS del mail del CSS del editor, el
+sandbox del canvas, la CSP que decide dónde puede vivir la preview, y los
+atributos `acr-dc-*` del contenido condicional. Todo medido en vivo. **Leerlo
+antes de tocar nada de esa carpeta** — casi todo ahí es contraintuitivo y costó
+cuatro rondas de reconocimiento averiguarlo.
+
+Si Adobe cambia el editor, rehacer el diagnóstico con los `recon/` en vez de
+adivinar selectores nuevos: esa fue la lección de la primera versión, que se
+escribió adivinando y hubo que tirarla entera.
 
 ## Gotchas
 
