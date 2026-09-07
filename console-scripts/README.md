@@ -140,11 +140,11 @@ Blocked opening '' in a new window because the request was made in a
 sandboxed frame whose 'allow-popups' permission is not set.
 ```
 
-Pero el sandbox **no** bloquea `postMessage`, y el frame `top`
-(`experience.adobe.com`) no está sandboxeado. De ahí el puente:
+Pero el sandbox **no** bloquea `postMessage`, y los frames de arriba no están
+sandboxeados. De ahí el puente:
 
 ```
-canvas (sandboxeado)            top (sin sandbox)
+canvas (sandboxeado)          frame de arriba (sin sandbox)
   extrae el HTML  ──postMessage──►  lo escribe en la pestaña que abrió
   en cada edición
 ```
@@ -177,11 +177,11 @@ __accTab.destruir()   // desmontar el rol de ese contexto
 
 ### Seguridad del puente
 
-El emisor manda el HTML dirigido **exclusivamente** a `experience.adobe.com`,
-nunca con `'*'`, así ningún otro frame de la página puede leerlo. El receptor
-descarta cualquier mensaje que no venga de
-`acrites-ui-iframe.experience.adobe.net`. El único mensaje que sí va con `'*'`
-es el pedido inicial del receptor, que no lleva contenido.
+El emisor responde **únicamente a quien le pidió**, dirigido a su origen exacto
+y nunca con `'*'`, y solo si ese origen es un dominio de Adobe — así ningún otro
+frame de la página puede leer el mail. El receptor descarta cualquier mensaje
+que no venga de `acrites-ui-iframe.experience.adobe.net`. El único mensaje que
+sí va con `'*'` es el pedido inicial del receptor, que no lleva contenido.
 
 > En la extensión nada de esto hace falta: `chrome.tabs.create` desde el service
 > worker no está sujeto al sandbox del frame, y un content script con
