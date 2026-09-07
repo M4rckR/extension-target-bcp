@@ -150,6 +150,11 @@
 
     return (
       '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n' +
+      // Sin referrer: si el servidor de las imágenes tiene protección
+      // anti-hotlinking, un Referer del host del editor se las rechaza y salen
+      // rotas. Bajado a disco no se manda referrer y ahí cargan bien — esto
+      // reproduce ese comportamiento dentro de la preview.
+      '<meta name="referrer" content="no-referrer">\n' +
       '<base href="' + base + '">\n' +
       "<style>\n" + css + "\n</style>\n" +
       '</head>\n<body style="margin:0">\n' + copia.innerHTML + "\n</body>\n</html>"
@@ -216,7 +221,7 @@
           <button class="barra__x" id="cerrar">✕</button>
         </div>
         <div class="estado" id="estado"></div>
-        <div class="lienzo"><div class="escala" id="escala"><iframe id="vista"></iframe></div></div>
+        <div class="lienzo"><div class="escala" id="escala"><iframe id="vista" referrerpolicy="no-referrer"></iframe></div></div>
       </div>`;
 
     (document.body || document.documentElement).appendChild(host);

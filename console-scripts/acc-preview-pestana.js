@@ -117,6 +117,11 @@
       const base = String(document.baseURI || location.href).replace(/"/g, "&quot;");
       return (
         '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n' +
+        // Sin referrer: si el servidor de las imágenes tiene protección
+        // anti-hotlinking, un Referer de experience.adobe.com se las rechaza y
+        // salen rotas. Bajado a disco no se manda referrer y por eso ahí sí
+        // cargan — esto reproduce ese comportamiento dentro de la preview.
+        '<meta name="referrer" content="no-referrer">\n' +
         '<base href="' + base + '">\n<style>\n' + cssDelMail() + "\n</style>\n" +
         '</head>\n<body style="margin:0">\n' + copia.innerHTML + "\n</body>\n</html>"
       );
@@ -214,7 +219,7 @@
     <button id="movil">Móvil</button>
     <button id="descargar">Descargar .html</button>
   </div>
-  <div class="lienzo"><iframe id="vista" width="700"></iframe></div>
+  <div class="lienzo"><iframe id="vista" width="700" referrerpolicy="no-referrer"></iframe></div>
 </body>`;
 
     function abrir() {
