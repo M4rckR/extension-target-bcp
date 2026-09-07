@@ -169,28 +169,37 @@ Consecuencias probables del mismo sandbox, no verificadas una por una:
 Verificado el 2026-09-07 por eliminación, con el mismo HTML extraído en los tres
 casos:
 
-| Dónde se renderiza | CSP que hereda | ¿Cargan las imágenes? |
-| --- | --- | --- |
-| **Panel dentro del canvas** | la de `acrites-ui-iframe…` | ✅ |
-| Pestaña aparte abierta desde `top` | la de `experience.adobe.com` | ❌ rotas |
-| Archivo `.html` bajado y abierto del disco | ninguna | ✅ |
-
-**La CSP de `experience.adobe.com` restringe `img-src`.** Una pestaña abierta con
-`window.open` hereda la política del documento que la abrió, y el `<iframe
-srcdoc>` de adentro también — así que las imágenes del mail quedan bloqueadas
+Una pestaña abierta con `window.open` hereda la CSP del documento que la abrió,
+y el `<iframe srcdoc>` de adentro también. Como **la CSP de
+`experience.adobe.com` restringe `img-src`**, las imágenes del mail salen rotas
 aunque las URLs sean correctas (se comprueba abriéndolas sueltas: cargan bien).
 
-El canvas tiene una política más permisiva, lógico: el editor tiene que poder
-mostrar esas mismas imágenes. Por eso el panel funciona.
+Pero eso vale para *ese* origen, no para toda la cadena. Probado uno por uno con
+el mismo HTML extraído:
+
+| Dónde se renderiza | CSP que hereda | ¿Cargan las imágenes? |
+| --- | --- | --- |
+| **Panel dentro del canvas** | `acrites-ui-iframe…` | ✅ |
+| **Pestaña abierta desde `campaign-acc-web-ui`** | `cdn.experience.adobe.net` | ✅ |
+| Pestaña abierta desde `top` | `experience.adobe.com` | ❌ rotas |
+| Archivo `.html` bajado y abierto del disco | ninguna | ✅ |
+
+> **De qué frame se abre la pestaña define si se ven las imágenes.** Es el dato
+> operativo más importante de todo este documento: el receptor de
+> `acc-preview-pestana.js` va en **`Main Content (campaign-acc-web-ui)`**, nunca
+> en `top`.
+
+Tiene sentido: `cdn.experience.adobe.net` y `acrites-ui-iframe.experience.adobe.net`
+son los orígenes que sirven el editor, y el editor tiene que poder mostrar esas
+mismas imágenes. El restrictivo es el shell de Experience Cloud.
 
 Se descartó que fuera protección anti-hotlinking por `Referer`: se agregó
 `<meta name="referrer" content="no-referrer">` y `referrerpolicy="no-referrer"`
-y no cambió nada en la pestaña. Se dejaron igual porque no molestan y cubren
-ese caso si aparece en otro entorno.
+y no cambió nada. Se dejaron igual porque no molestan y cubren ese caso si
+aparece en otro entorno.
 
-**Conclusión operativa: por consola, la preview tiene que renderizarse dentro
-del canvas.** La pestaña aparte funciona para el HTML y el CSS pero pierde las
-imágenes; sirve como demo secundaria o con el botón de descargar.
+Por eso la pestaña muestra un contador de imágenes cargadas: es la forma rápida
+de saber si el frame elegido sirve, sin mirar a ojo.
 
 ## 6. Qué significa esto para la extensión
 
@@ -231,10 +240,9 @@ Automation 360. Hay precedente de aprobación para herramientas de Adobe.
   `recon-estilos.js`) — todos los datos de este documento salen de ahí.
 - Que `window.open` está bloqueado por el sandbox del canvas.
 - **Que `acc-email-preview.js` funciona: el panel muestra el mail completo, con
-  estilos y con imágenes.** Es la vía recomendada.
-- Que `acc-preview-pestana.js` funciona en cuanto al puente `postMessage` y
-  renderiza el mail, pero **sin imágenes**, por la CSP de `experience.adobe.com`
-  (sección 5 bis).
+  estilos y con imágenes.**
+- **Que `acc-preview-pestana.js` funciona con imágenes**, siempre que el receptor
+  se pegue en `Main Content (campaign-acc-web-ui)` y no en `top` (sección 5 bis).
 - Que el HTML bajado con **Descargar .html** se ve completo, con imágenes,
   abierto desde el disco.
 
